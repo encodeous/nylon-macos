@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MenuContent: View {
     @ObservedObject var store: NodeStore
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Text(store.peers == nil ? "Not running, or observability_addr isn't set" : "Running")
@@ -12,16 +13,8 @@ struct MenuContent: View {
             Text("Can't read \(store.path)")
         }
         Divider()
-        Button("Choose central.yaml…") { chooseCentral() }
+        Button("Settings…") { showSettings(openSettings) }
         Button("Quit") { NSApplication.shared.terminate(nil) }
-    }
-
-    private func chooseCentral() {
-        NSApp.activate() // a menu bar app runs in the background, so bring the picker to the front
-        let panel = NSOpenPanel()
-        if panel.runModal() == .OK, let url = panel.url {
-            store.choose(url.path)
-        }
     }
 }
 

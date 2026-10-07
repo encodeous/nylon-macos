@@ -13,7 +13,7 @@ For Apple Silicon Macs on macOS 14 or later.
    xattr -dr com.apple.quarantine /Applications/Nylon.app
    ```
 
-3. Click the nylon icon in the menu bar, then "Choose central.yaml…" and pick your file. The app remembers it for next time.
+3. Nylon opens its Settings window the first time. Click "Choose…" and pick your `central.yaml`. The app remembers it. To change it later, click the nylon icon in the menu bar, then "Settings…".
 
 4. For latency, turn on nylon's metrics endpoint. Add this to `node.yaml` and restart nylon:
 
@@ -21,7 +21,7 @@ For Apple Silicon Macs on macOS 14 or later.
    observability_addr: 127.0.0.1:9090
    ```
 
-   Without it the menu says "Not running". The app doesn't need root.
+   Without it the menu says "Not running". If nylon listens somewhere else, change "Metrics URL" in Settings. The app doesn't need root.
 
 `Packaging/package.sh` builds the DMG and writes it to `dist/Nylon.dmg`.
 
@@ -31,12 +31,12 @@ For Apple Silicon Macs on macOS 14 or later.
 2. From this folder, build and start it:
 
    ```bash
-   swift build -c release && .build/release/NylonApp
+   swift build -c release && .build/release/Nylon
    ```
 
 3. Follow steps 3 and 4 of Install.
 
-To skip the picker, pass the file: `.build/release/NylonApp -central /path/to/central.yaml`. With no file chosen, it reads `central.yaml` in the current directory, like `nylon run`. If nylon serves metrics somewhere else, pass `-metrics http://127.0.0.1:<port>/metrics`.
+To skip Settings, pass the file: `.build/release/Nylon -central /path/to/central.yaml`. With no file chosen, it reads `central.yaml` in the current directory, like `nylon run`. If nylon serves metrics somewhere else, pass `-metrics http://127.0.0.1:<port>/metrics`.
 
 ## Try it without nylon
 

@@ -7,7 +7,7 @@ set -eu
 app=$(cd "$(dirname "$0")/.." && pwd)
 
 swift build -c release --package-path "$app"
-pkill -x NylonApp 2>/dev/null || true # don't stack menu bar icons
+pkill -x Nylon 2>/dev/null || true # don't stack menu bar icons
 central=${1:-}; [ $# -gt 0 ] && shift
-"$app/.build/release/NylonApp" ${central:+-central "$central"} "$@" >/dev/null 2>&1 &
-echo "NylonApp running (pid $!). Stop it with Quit in its menu or: pkill -x NylonApp"
+"$app/.build/release/Nylon" ${central:+-central "$central"} "$@" >/dev/null 2>&1 &
+echo "Nylon running (pid $!). Stop it with Quit in its menu or: pkill -x Nylon"
