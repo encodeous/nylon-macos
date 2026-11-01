@@ -1,0 +1,20 @@
+// Build settings for every target. The project file only sets what's per target; anything about signing lives here,
+// so it can be changed without touching nylon.xcodeproj.
+
+MACOSX_DEPLOYMENT_TARGET = 14.0
+SWIFT_VERSION = 5.0
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+
+// The nylon repo: its logo and IPC definitions. The submodule by default; Local.xcconfig can point it at another
+// checkout, e.g. one next to this repo that you're editing.
+NYLON_DIR = $(SRCROOT)/nylon
+
+// Without an Apple team the build is signed ad hoc, so a fresh clone builds and runs with no account.
+// Local.xcconfig (gitignored, see Local.xcconfig.example) sets the team and real signing.
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+ENABLE_HARDENED_RUNTIME = YES
+
+#include? "Local.xcconfig"

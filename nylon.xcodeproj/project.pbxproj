@@ -1,0 +1,610 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4E594C4F4E0000000000001C /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 4E594C4F4E0000000000001B /* Yams */; };
+		4E594C4F4E00000000000033 /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = 4E594C4F4E00000000000031 /* SwiftProtobuf */; };
+		4E594C4F4E00000000000034 /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = 4E594C4F4E00000000000032 /* SwiftProtobuf */; };
+		4E594C4F4E0000000000004A /* nylon-helper in Helper */ = {isa = PBXBuildFile; fileRef = 4E594C4F4E00000000000046 /* nylon-helper */; };
+		4E594C4F4E0000000000004C /* com.encodeous.nylon.helper.plist in Launch Daemon */ = {isa = PBXBuildFile; fileRef = 4E594C4F4E00000000000048 /* com.encodeous.nylon.helper.plist */; };
+		4E594C4F4E00000000000052 /* Yams in Frameworks */ = {isa = PBXBuildFile; productRef = 4E594C4F4E00000000000051 /* Yams */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4E594C4F4E00000000000019 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4E594C4F4E00000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4E594C4F4E00000000000010;
+			remoteInfo = nylon;
+		};
+		4E594C4F4E0000000000004E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4E594C4F4E00000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4E594C4F4E00000000000040;
+			remoteInfo = "nylon-helper";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		4E594C4F4E00000000000049 /* Helper */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				4E594C4F4E0000000000004A /* nylon-helper in Helper */,
+			);
+			name = Helper;
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E594C4F4E0000000000004B /* Launch Daemon */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchDaemons;
+			dstSubfolderSpec = 1;
+			files = (
+				4E594C4F4E0000000000004C /* com.encodeous.nylon.helper.plist in Launch Daemon */,
+			);
+			name = "Launch Daemon";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		4E594C4F4E00000000000005 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
+		4E594C4F4E00000000000008 /* nylon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = nylon.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4E594C4F4E00000000000009 /* nylonTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = nylonTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		4E594C4F4E00000000000026 /* Local.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Local.xcconfig.example; sourceTree = "<group>"; };
+		4E594C4F4E00000000000046 /* nylon-helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "nylon-helper"; sourceTree = BUILT_PRODUCTS_DIR; };
+		4E594C4F4E00000000000048 /* com.encodeous.nylon.helper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = com.encodeous.nylon.helper.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		4E594C4F4E00000000000006 /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = App;
+			sourceTree = "<group>";
+		};
+		4E594C4F4E00000000000007 /* Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		4E594C4F4E00000000000035 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		4E594C4F4E00000000000036 /* Helper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Helper;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4E594C4F4E00000000000013 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4E594C4F4E0000000000001C /* Yams in Frameworks */,
+				4E594C4F4E00000000000033 /* SwiftProtobuf in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E594C4F4E00000000000016 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E594C4F4E00000000000042 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4E594C4F4E00000000000034 /* SwiftProtobuf in Frameworks */,
+				4E594C4F4E00000000000052 /* Yams in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4E594C4F4E00000000000002 = {
+			isa = PBXGroup;
+			children = (
+				4E594C4F4E00000000000006 /* App */,
+				4E594C4F4E00000000000036 /* Helper */,
+				4E594C4F4E00000000000035 /* Shared */,
+				4E594C4F4E00000000000007 /* Tests */,
+				4E594C4F4E00000000000047 /* LaunchDaemons */,
+				4E594C4F4E00000000000004 /* Config */,
+				4E594C4F4E00000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4E594C4F4E00000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4E594C4F4E00000000000008 /* nylon.app */,
+				4E594C4F4E00000000000009 /* nylonTests.xctest */,
+				4E594C4F4E00000000000046 /* nylon-helper */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		4E594C4F4E00000000000004 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				4E594C4F4E00000000000005 /* Base.xcconfig */,
+				4E594C4F4E00000000000026 /* Local.xcconfig.example */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		4E594C4F4E00000000000047 /* LaunchDaemons */ = {
+			isa = PBXGroup;
+			children = (
+				4E594C4F4E00000000000048 /* com.encodeous.nylon.helper.plist */,
+			);
+			path = LaunchDaemons;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4E594C4F4E00000000000010 /* nylon */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4E594C4F4E00000000000020 /* Build configuration list for PBXNativeTarget "nylon" */;
+			buildPhases = (
+				4E594C4F4E0000000000004F /* Check Protobuf */,
+				4E594C4F4E00000000000012 /* Sources */,
+				4E594C4F4E00000000000013 /* Frameworks */,
+				4E594C4F4E00000000000014 /* Resources */,
+				4E594C4F4E00000000000027 /* App Icon */,
+				4E594C4F4E00000000000050 /* Build nylon */,
+				4E594C4F4E00000000000049 /* Helper */,
+				4E594C4F4E0000000000004B /* Launch Daemon */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4E594C4F4E0000000000004D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				4E594C4F4E00000000000006 /* App */,
+				4E594C4F4E00000000000035 /* Shared */,
+			);
+			name = nylon;
+			packageProductDependencies = (
+				4E594C4F4E0000000000001B /* Yams */,
+				4E594C4F4E00000000000031 /* SwiftProtobuf */,
+			);
+			productName = nylon;
+			productReference = 4E594C4F4E00000000000008 /* nylon.app */;
+			productType = "com.apple.product-type.application";
+		};
+		4E594C4F4E00000000000011 /* nylonTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4E594C4F4E00000000000023 /* Build configuration list for PBXNativeTarget "nylonTests" */;
+			buildPhases = (
+				4E594C4F4E00000000000015 /* Sources */,
+				4E594C4F4E00000000000016 /* Frameworks */,
+				4E594C4F4E00000000000017 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4E594C4F4E00000000000018 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				4E594C4F4E00000000000007 /* Tests */,
+			);
+			name = nylonTests;
+			productName = nylonTests;
+			productReference = 4E594C4F4E00000000000009 /* nylonTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		4E594C4F4E00000000000040 /* nylon-helper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4E594C4F4E00000000000043 /* Build configuration list for PBXNativeTarget "nylon-helper" */;
+			buildPhases = (
+				4E594C4F4E00000000000041 /* Sources */,
+				4E594C4F4E00000000000042 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4E594C4F4E00000000000035 /* Shared */,
+				4E594C4F4E00000000000036 /* Helper */,
+			);
+			name = "nylon-helper";
+			packageProductDependencies = (
+				4E594C4F4E00000000000032 /* SwiftProtobuf */,
+				4E594C4F4E00000000000051 /* Yams */,
+			);
+			productName = "nylon-helper";
+			productReference = 4E594C4F4E00000000000046 /* nylon-helper */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4E594C4F4E00000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					4E594C4F4E00000000000011 = {
+						TestTargetID = 4E594C4F4E00000000000010;
+					};
+				};
+			};
+			buildConfigurationList = 4E594C4F4E0000000000001D /* Build configuration list for PBXProject "nylon" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 4E594C4F4E00000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4E594C4F4E0000000000001A /* XCRemoteSwiftPackageReference "Yams" */,
+				4E594C4F4E00000000000030 /* XCRemoteSwiftPackageReference "swift-protobuf" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4E594C4F4E00000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4E594C4F4E00000000000010 /* nylon */,
+				4E594C4F4E00000000000011 /* nylonTests */,
+				4E594C4F4E00000000000040 /* nylon-helper */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4E594C4F4E00000000000014 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E594C4F4E00000000000017 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		4E594C4F4E00000000000027 /* App Icon */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/app-icon.sh",
+				"$(NYLON_DIR)/docs/assets/logo_neutral.svg",
+			);
+			name = "App Icon";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/AppIcon.icns",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SCRIPT_INPUT_FILE_0\"\n";
+		};
+		4E594C4F4E0000000000004F /* Check Protobuf */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/check-proto.sh",
+				"$(NYLON_DIR)/protocol/nylon_ipc.proto",
+				"$(SRCROOT)/Shared/Generated/nylon_ipc.pb.swift",
+			);
+			name = "Check Protobuf";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/check-proto.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SCRIPT_INPUT_FILE_0\"\n";
+		};
+		4E594C4F4E00000000000050 /* Build nylon */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build nylon";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/nylon",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Go's build cache makes this quick when nylon hasn't changed\n\"$SRCROOT/scripts/build-nylon.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4E594C4F4E00000000000012 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E594C4F4E00000000000015 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4E594C4F4E00000000000041 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4E594C4F4E00000000000018 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4E594C4F4E00000000000010 /* nylon */;
+			targetProxy = 4E594C4F4E00000000000019 /* PBXContainerItemProxy */;
+		};
+		4E594C4F4E0000000000004D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4E594C4F4E00000000000040 /* nylon-helper */;
+			targetProxy = 4E594C4F4E0000000000004E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		4E594C4F4E0000000000001E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4E594C4F4E00000000000005 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		4E594C4F4E0000000000001F /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4E594C4F4E00000000000005 /* Base.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ENABLE_MODULES = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		4E594C4F4E00000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = nylon;
+				INFOPLIST_KEY_CFBundleIconFile = AppIcon;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.encodeous.nylon;
+				PRODUCT_MODULE_NAME = NylonApp;
+				PRODUCT_NAME = nylon;
+			};
+			name = Debug;
+		};
+		4E594C4F4E00000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = nylon;
+				INFOPLIST_KEY_CFBundleIconFile = AppIcon;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.encodeous.nylon;
+				PRODUCT_MODULE_NAME = NylonApp;
+				PRODUCT_NAME = nylon;
+			};
+			name = Release;
+		};
+		4E594C4F4E00000000000024 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.encodeous.nylon.tests;
+				PRODUCT_NAME = nylonTests;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/nylon.app/Contents/MacOS/nylon";
+			};
+			name = Debug;
+		};
+		4E594C4F4E00000000000025 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.encodeous.nylon.tests;
+				PRODUCT_NAME = nylonTests;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/nylon.app/Contents/MacOS/nylon";
+			};
+			name = Release;
+		};
+		4E594C4F4E00000000000044 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.encodeous.nylon.helper;
+				PRODUCT_MODULE_NAME = NylonHelper;
+				PRODUCT_NAME = "nylon-helper";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		4E594C4F4E00000000000045 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.encodeous.nylon.helper;
+				PRODUCT_MODULE_NAME = NylonHelper;
+				PRODUCT_NAME = "nylon-helper";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4E594C4F4E0000000000001D /* Build configuration list for PBXProject "nylon" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4E594C4F4E0000000000001E /* Debug */,
+				4E594C4F4E0000000000001F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4E594C4F4E00000000000020 /* Build configuration list for PBXNativeTarget "nylon" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4E594C4F4E00000000000021 /* Debug */,
+				4E594C4F4E00000000000022 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4E594C4F4E00000000000023 /* Build configuration list for PBXNativeTarget "nylonTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4E594C4F4E00000000000024 /* Debug */,
+				4E594C4F4E00000000000025 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4E594C4F4E00000000000043 /* Build configuration list for PBXNativeTarget "nylon-helper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4E594C4F4E00000000000044 /* Debug */,
+				4E594C4F4E00000000000045 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4E594C4F4E0000000000001A /* XCRemoteSwiftPackageReference "Yams" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jpsim/Yams.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.2.2;
+			};
+		};
+		4E594C4F4E00000000000030 /* XCRemoteSwiftPackageReference "swift-protobuf" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-protobuf.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.39.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4E594C4F4E0000000000001B /* Yams */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4E594C4F4E0000000000001A /* XCRemoteSwiftPackageReference "Yams" */;
+			productName = Yams;
+		};
+		4E594C4F4E00000000000031 /* SwiftProtobuf */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4E594C4F4E00000000000030 /* XCRemoteSwiftPackageReference "swift-protobuf" */;
+			productName = SwiftProtobuf;
+		};
+		4E594C4F4E00000000000032 /* SwiftProtobuf */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4E594C4F4E00000000000030 /* XCRemoteSwiftPackageReference "swift-protobuf" */;
+			productName = SwiftProtobuf;
+		};
+		4E594C4F4E00000000000051 /* Yams */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4E594C4F4E0000000000001A /* XCRemoteSwiftPackageReference "Yams" */;
+			productName = Yams;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 4E594C4F4E00000000000001 /* Project object */;
+}

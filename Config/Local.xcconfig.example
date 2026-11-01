@@ -1,0 +1,10 @@
+// Copy to Local.xcconfig (gitignored) to sign with your Apple Developer account.
+// Your Team ID is under Membership details at https://developer.apple.com/account. It isn't the ID in brackets in
+// your certificate's name ("Apple Development: you@example.com (XXXXXXXXXX)"); that one is the certificate's own.
+
+DEVELOPMENT_TEAM = ABCDE12345
+CODE_SIGN_STYLE = Automatic
+CODE_SIGN_IDENTITY = Apple Development
+
+// Build against your own nylon checkout instead of the submodule:
+// NYLON_DIR = $(SRCROOT)/../nylon
