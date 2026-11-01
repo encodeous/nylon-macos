@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The helper's launch daemon. The app registers it with SMAppService; it's copied to Contents/Library/LaunchDaemons. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.encodeous.nylon.helper</string>
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/nylon-helper</string>
+	<key>MachServices</key>
+	<dict>
+		<key>com.encodeous.nylon.helper</key>
+		<true/>
+	</dict>
+	<!-- shows the app, not a bare executable, in System Settings > Login Items -->
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>com.encodeous.nylon</string>
+	</array>
+	<!-- at boot, so it can start nylon before anyone logs in -->
+	<key>RunAtLoad</key>
+	<true/>
+	<!-- time to stop every network on the way out: they're signalled together, then given 10 seconds -->
+	<key>ExitTimeOut</key>
+	<integer>30</integer>
+	<key>StandardErrorPath</key>
+	<string>/Library/Logs/nylon/helper.log</string>
+</dict>
+</plist>

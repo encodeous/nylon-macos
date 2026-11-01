@@ -1,0 +1,77 @@
+# Pushing a tag like v1.2.0 builds nylon.dmg, signs it with the Developer ID certificate, notarizes it, and attaches it
+# to a GitHub release for the tag. docs/BUILDING.md lists the secrets it needs.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # to create the release
+
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: nylon/go.mod
+          cache-dependency-path: nylon/go.sum
+
+      # A keychain that lives only for this job, holding the Developer ID certificate.
+      - name: Import the signing certificate
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(uuidgen)
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/certificate.p12"
+
+      # CI has no Xcode account for automatic signing; the app needs no provisioning profile, so sign manually.
+      - name: Configure signing
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          cat > Config/Local.xcconfig <<EOF
+          DEVELOPMENT_TEAM = $TEAM_ID
+          CODE_SIGN_STYLE = Manual
+          CODE_SIGN_IDENTITY = Developer ID Application
+          EOF
+
+      - name: Build, sign and notarize
+        env:
+          NOTARY_KEY_CONTENTS: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          export NOTARY_KEY="$RUNNER_TEMP/notary.p8"
+          printf '%s' "$NOTARY_KEY_CONTENTS" > "$NOTARY_KEY"
+          REQUIRE_SIGNING=1 VERSION="${GITHUB_REF_NAME#v}" BUILD_NUMBER="$GITHUB_RUN_NUMBER" scripts/dmg.sh
+
+      # Never publish a DMG that isn't signed and notarized.
+      - name: Check the DMG
+        run: |
+          xcrun stapler validate dist/nylon.dmg
+          spctl --assess --type open --context context:primary-signature --verbose dist/nylon.dmg
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/nylon.dmg --title "nylon $GITHUB_REF_NAME" --generate-notes
+
+      - name: Remove the keychain and keys
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/notary.p8"

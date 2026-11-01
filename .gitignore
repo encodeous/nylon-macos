@@ -1,2 +1,24 @@
-.build/
+# build output
+build/
 dist/
+DerivedData/
+.build/
+.swiftpm/
+
+# Xcode's per-user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# signing and notarization: never commit these (see Config/Local.xcconfig.example)
+Config/Local.xcconfig
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile
+ExportOptions.local.plist
+.env
+.env.*
+
+.DS_Store

@@ -1,0 +1,3 @@
+[submodule "nylon"]
+	path = nylon
+	url = ../nylon.git
