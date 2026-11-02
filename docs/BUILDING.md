@@ -1,6 +1,6 @@
 # Building nylon for Mac
 
-You need Xcode 16.3 or later (the pinned SwiftProtobuf needs Swift 6.1) and [Go](https://go.dev/dl). The app bundles nylon, built from the `nylon` submodule, and takes its icon and IPC protocol from there, so clone with it:
+You need Xcode 26 or later (the app uses macOS 26 APIs, behind availability checks so it still runs on macOS 14) and [Go](https://go.dev/dl). The app bundles nylon, built from the `nylon` submodule, and takes its icon and IPC protocol from there, so clone with it:
 
 ```bash
 git clone --recurse-submodules git@github.com:encodeous/nylon-macos.git
