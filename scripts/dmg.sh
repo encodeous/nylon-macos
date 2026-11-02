@@ -62,7 +62,9 @@ else
     cp -R "$archive/Products/Applications/nylon.app" "$stage/"
 fi
 ln -s /Applications "$stage/Applications"
-hdiutil create -volname nylon -srcfolder "$stage" -format UDZO dist/nylon.dmg
+hdiutil create -volname Nylon -srcfolder "$stage" -format UDZO dist/nylon.dmg
+# The nylon command on its own, for those who only want the CLI: the copy inside the app, already signed with it
+ditto -c -k --norsrc "$stage/nylon.app/Contents/Helpers/nylon" dist/nylon-cli.zip
 
 [ -n "$team" ] || exit 0
 identity=$(security find-identity -v -p codesigning | grep "Developer ID Application: .*($team)" | awk 'NR == 1 { print $2 }')
@@ -72,10 +74,13 @@ if [ -z "$identity" ]; then
 fi
 codesign --sign "$identity" --timestamp dist/nylon.dmg
 if [ -n "${NOTARY_PROFILE:-}" ]; then
-    xcrun notarytool submit dist/nylon.dmg --keychain-profile "$NOTARY_PROFILE" --wait
+    set -- --keychain-profile "$NOTARY_PROFILE"
 elif [ -n "${NOTARY_KEY:-}" ]; then
-    xcrun notarytool submit dist/nylon.dmg --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" --wait
+    set -- --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER"
 else
     exit 0
 fi
+xcrun notarytool submit dist/nylon.dmg "$@" --wait
 xcrun stapler staple dist/nylon.dmg
+# A bare binary can't hold a ticket; Gatekeeper looks this one up online the first time a downloaded copy runs
+xcrun notarytool submit dist/nylon-cli.zip "$@" --wait

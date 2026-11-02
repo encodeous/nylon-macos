@@ -27,8 +27,12 @@ enum Pairings {
         try Paths.writePrivate(encodeJSON(pairings), to: Paths.pairings)
     }
 
-    // Helper.adminRight's rule: an administrator must authenticate, every time.
-    private static let rule: [String: Any] = ["class": "user", "group": "admin", "timeout": 0, "shared": false, "version": 1]
+    // Helper.adminRight's rule: an administrator must authenticate, every time. The approval stays good for a few
+    // seconds so the helper can check what the app was just given; with no time at all it has already expired by
+    // then, and every check fails. Not shared, so it lives only in that one authorization, which no other process
+    // can use. (Apple's own authenticate-admin-nonshared is the same with 30 seconds.)
+    private static let approvalSeconds = 10
+    private static let rule: [String: Any] = ["class": "user", "group": "admin", "timeout": approvalSeconds, "shared": false, "version": 1]
 
     // Puts Helper.adminRight in the authorization database. The app asks for the right, which shows the password
     // prompt; the helper then checks the app got it. The right is never removed: anyone may create a right that
@@ -37,8 +41,8 @@ enum Pairings {
         var auth: AuthorizationRef?
         guard AuthorizationCreate(nil, nil, [], &auth) == errAuthorizationSuccess, let auth else { return }
         defer { AuthorizationFree(auth, []) }
-        let status = AuthorizationRightSet(auth, Helper.adminRight, rule as CFDictionary,
-                                           "nylon needs an administrator to change its helper." as CFString, nil, nil)
+        // No description of its own: macOS shows it after the app's prompt, and two sentences read as one muddle
+        let status = AuthorizationRightSet(auth, Helper.adminRight, rule as CFDictionary, nil, nil, nil)
         if status != errAuthorizationSuccess { log("couldn't set the admin right: \(status)") }
     }
 
@@ -48,7 +52,7 @@ enum Pairings {
         guard AuthorizationRightGet(Helper.adminRight, &definition) == errAuthorizationSuccess,
               let definition = definition as? [String: Any] else { return false }
         return definition["class"] as? String == "user" && definition["group"] as? String == "admin"
-            && definition["timeout"] as? Int == 0 && definition["shared"] as? Bool == false
+            && definition["timeout"] as? Int == approvalSeconds && definition["shared"] as? Bool == false
     }
 
     // Whether externalForm is an authorization holding Helper.adminRight, i.e. an administrator just approved.

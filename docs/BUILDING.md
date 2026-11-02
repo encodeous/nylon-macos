@@ -47,7 +47,7 @@ regenerates it. It needs `protoc`, and builds `protoc-gen-swift` from the SwiftP
 scripts/dmg.sh
 ```
 
-writes `dist/nylon.dmg`. With a team in `Local.xcconfig`, the app and the DMG are signed with your Developer ID Application certificate (Xcode → Settings → Accounts → Manage Certificates to make one). `VERSION=1.2.0 BUILD_NUMBER=12` set the app's version.
+writes `dist/nylon.dmg`, and `dist/nylon-cli.zip` with just the `nylon` command from inside the app. With a team in `Local.xcconfig`, the app and the DMG are signed with your Developer ID Application certificate (Xcode → Settings → Accounts → Manage Certificates to make one). `VERSION=1.2.0 BUILD_NUMBER=12` set the app's version.
 
 To notarize, so it opens without "Open Anyway", save App Store Connect credentials in your keychain once, then name the profile:
 
@@ -61,7 +61,7 @@ NOTARY_PROFILE=nylon-notary scripts/dmg.sh
 
 ### From GitHub Actions
 
-Pushing a tag that starts with `v` runs `.github/workflows/release.yml`: it builds the app at that version, signs it with the Developer ID certificate, notarizes it, and attaches `nylon.dmg` to a GitHub release for the tag.
+Pushing a tag that starts with `v` runs `.github/workflows/release.yml`: it builds the app at that version, signs it with the Developer ID certificate, notarizes it, and attaches `nylon.dmg` and `nylon-cli.zip` to a GitHub release for the tag.
 
 ```bash
 git tag v1.2.0
@@ -71,7 +71,7 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-It needs these repository secrets (Settings → Secrets and variables → Actions):
+The job runs in the `release` environment (Settings → Environments): only `v*` tags can use it, each run waits for the repository owner to approve it, and a ruleset lets only admins create `v*` tags. Its secrets belong to that environment, not the repository, so nothing else can read them (`gh secret set NAME --env release`):
 
 | Secret | What |
 |---|---|

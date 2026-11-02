@@ -8,6 +8,7 @@ final class Supervisor {
     private var housekeeping: DispatchSourceTimer?
 
     init() {
+        restoreSetAsideFolders(in: Paths.networks)
         let folders = (try? FileManager.default.contentsOfDirectory(at: Paths.networks, includingPropertiesForKeys: nil)) ?? []
         for folder in folders where !folder.lastPathComponent.hasPrefix(".")
             && FileManager.default.fileExists(atPath: folder.appendingPathComponent("node.yaml").path) {
@@ -112,15 +113,14 @@ final class Supervisor {
         let wasRunning = network.runningOrRestarting
         network.stop()
         try Paths.makePrivate(Paths.networks)
-        let old = Paths.networks.appendingPathComponent(".\(network.name).old")
-        try? FileManager.default.removeItem(at: old)
-        if FileManager.default.fileExists(atPath: network.folder.path) {
-            try? FileManager.default.copyItem(at: network.folder.appendingPathComponent("settings.json"),
-                                              to: Paths.staging.appendingPathComponent("settings.json"))
-            try FileManager.default.moveItem(at: network.folder, to: old)
+        try? FileManager.default.copyItem(at: network.folder.appendingPathComponent("settings.json"),
+                                          to: Paths.staging.appendingPathComponent("settings.json"))
+        do {
+            try installFolder(Paths.staging, at: network.folder) // one step: the folder is never without a config
+        } catch {
+            if wasRunning { try? network.start() } // the old config is still there
+            throw error
         }
-        try FileManager.default.moveItem(at: Paths.staging, to: network.folder)
-        try? FileManager.default.removeItem(at: old)
         networks[network.name] = network
         if wasRunning {
             do { try network.start() } catch { throw Failure("Imported, but nylon didn't start: \(error)") }

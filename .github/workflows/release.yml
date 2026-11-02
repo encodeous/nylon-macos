@@ -12,6 +12,9 @@ permissions:
 jobs:
   dmg:
     runs-on: macos-15
+    # The secrets live in this environment, which only v* tags can use and which waits for the repo owner's approval,
+    # so neither a branch nor another collaborator's tag can reach them.
+    environment: release
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,11 +67,13 @@ jobs:
         run: |
           xcrun stapler validate dist/nylon.dmg
           spctl --assess --type open --context context:primary-signature --verbose dist/nylon.dmg
+          ditto -x -k dist/nylon-cli.zip "$RUNNER_TEMP/cli"
+          codesign --verify --strict --verbose=2 "$RUNNER_TEMP/cli/nylon"
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/nylon.dmg --title "nylon $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/nylon.dmg dist/nylon-cli.zip --title "nylon $GITHUB_REF_NAME" --generate-notes
 
       - name: Remove the keychain and keys
         if: always()

@@ -19,11 +19,11 @@ func checkPairing(keys: PairingKeys, keysData: Data, challenge: Data, proof: Dat
                   caller: Caller, approved: Bool) throws {
     guard isPublicKey(keys.read), isPublicKey(keys.write) else { throw Failure("Bad keys.") }
     guard verifySignature(proof, of: pairingMessage(challenge: challenge, keys: keysData), publicKey: keys.read) else {
-        throw Failure("The pairing request wasn't signed with its own read key.")
+        throw Failure("The request to connect wasn't signed with its own key.")
     }
-    guard challenges.spend(challenge) else { throw Failure("The pairing request's challenge is used, expired or from another connection.") }
+    guard challenges.spend(challenge) else { throw Failure("The request to connect has a challenge that's used, expired or from another connection.") }
     guard caller.isAdministrator else { throw Failure("Only an administrator's account can control nylon's helper.") }
-    guard approved else { throw Failure("An administrator has to approve pairing.") }
+    guard approved else { throw Failure("An administrator has to approve connecting.") }
 }
 
 // The helper's check of a signed request: from one of the caller's pairings, signed with that pairing's key for its
@@ -33,10 +33,10 @@ func checkRequest(_ request: Data, signature: Data, challenges: inout Challenges
     -> (Pairing, HelperAction) {
     guard let signed = try? decodeJSON(SignedRequest.self, request) else { throw Failure("Bad request.") }
     guard let pairing = pairings.first(where: { $0.keys.read == signed.pairing && $0.uid == caller.uid }) else {
-        throw Failure("This app isn't paired with the nylon helper.")
+        throw Failure("This app isn't connected to the nylon helper.")
     }
     let key = signed.action.needsWriteKey ? pairing.keys.write : pairing.keys.read
-    guard verifySignature(signature, of: request, publicKey: key) else { throw Failure("The app's signature doesn't match its pairing.") }
+    guard verifySignature(signature, of: request, publicKey: key) else { throw Failure("The app's signature doesn't match its connection.") }
     guard challenges.spend(signed.challenge) else { throw Failure("The request's challenge is used, expired or from another connection.") }
     guard caller.isAdministrator || !signed.action.needsWriteKey else {
         throw Failure("Only an administrator's account can change nylon's networks.")

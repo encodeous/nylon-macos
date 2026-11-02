@@ -17,6 +17,7 @@ final class HelperClient: ObservableObject {
 
     @Published private(set) var setup = Setup.notInstalled
     @Published private(set) var version: String?
+    @Published private(set) var checked = false // whether refresh has run once, so setup isn't a guess
 
     private let service = SMAppService.daemon(plistName: Helper.plistName)
     // `-fake YES` swaps the helper for a pretend one, to work on the UI without it
@@ -32,24 +33,26 @@ final class HelperClient: ObservableObject {
     // Works out where setup is. The helper may have been registered by another copy of the app (e.g. the one in
     // /Applications, while this is a build from Xcode), so ask it first; this copy's own registration comes second.
     func refresh() async {
-        if fake != nil { return setup = .ready }
-        guard team != nil else { return setup = .unsigned }
+        let (setup, version) = await check()
+        // published only when changed: this runs every few seconds, and each publish redraws the windows
+        if setup != self.setup { self.setup = setup }
+        if version != self.version { self.version = version }
+        if !checked { checked = true }
+    }
+
+    private func check() async -> (Setup, String?) {
+        if fake != nil { return (.ready, nil) }
+        guard team != nil else { return (.unsigned, nil) }
         guard let hello = try? await hello() else {
             switch service.status {
-            case .requiresApproval: setup = .waitingForLoginItem
-            case .enabled: setup = .failed("The helper is installed but isn't answering. See /Library/Logs/nylon/helper.log.")
-            default: setup = .notInstalled
+            case .requiresApproval: return (.waitingForLoginItem, nil)
+            case .enabled: return (.failed("The helper is installed but isn't answering. See /Library/Logs/nylon/helper.log."), nil)
+            default: return (.notInstalled, nil)
             }
-            return
         }
-        version = hello.version
-        if hello.version != appVersion {
-            setup = .outdated(helper: hello.version)
-        } else if let keys, hello.paired.contains(keys.publicKeys.read) {
-            setup = .ready
-        } else {
-            setup = .notPaired
-        }
+        if hello.version != appVersion { return (.outdated(helper: hello.version), hello.version) }
+        if let keys, hello.paired.contains(keys.publicKeys.read) { return (.ready, hello.version) }
+        return (.notPaired, hello.version)
     }
 
     // Registers the launch daemon. macOS then asks the user to allow it in System Settings, which this opens.
@@ -73,7 +76,7 @@ final class HelperClient: ObservableObject {
 
     // Removes this app's pairing. The helper keeps running other users' networks.
     func unpair() async throws {
-        _ = try await perform(.unpair, reason: "unpair this app from nylon's helper")
+        _ = try await perform(.unpair, reason: "disconnect this app from nylon's helper")
         await refresh()
     }
 
@@ -81,7 +84,7 @@ final class HelperClient: ObservableObject {
     // pairing, then the app unregisters it. The networks' config stays. A helper that doesn't answer is unregistered
     // anyway, so a broken install can always be removed.
     func uninstall() async throws {
-        let admin = try await Task.detached { try AdminApproval("nylon wants to remove its helper and stop every network on this Mac.") }.value
+        let admin = try await Task.detached { try AdminApproval("Nylon wants to uninstall its helper. This stops every network on this Mac.") }.value
         let authorization = admin.externalForm
         let cleanup: Error?
         do {
@@ -95,14 +98,14 @@ final class HelperClient: ObservableObject {
         disconnect()
         await refresh()
         if let cleanup {
-            throw Failure("The helper is unregistered, but couldn't clean up (\(cleanup)). See docs/ARCHITECTURE.md to remove what's left by hand.")
+            throw Failure("The helper is uninstalled, but it couldn't stop its networks first (\(cleanup)). Restart this Mac to stop them.")
         }
     }
 
     // Makes new keys and gives the helper their public halves, with an administrator's approval: one prompt, the
     // same for every user, the first one too. The read key signs the proof, so there's no Touch ID prompt as well.
     func pair() async throws {
-        let admin = try await Task.detached { try AdminApproval("nylon wants to let this app control its networks.") }.value
+        let admin = try await Task.detached { try AdminApproval("Nylon wants to connect to its helper.") }.value
         let keys = try AppKeys.create()
         try keys.save(pending: true) // saved before the helper pairs them, so they can't be lost after
         let keysData = try encodeJSON(keys.publicKeys)
@@ -122,7 +125,7 @@ final class HelperClient: ObservableObject {
     // to …" for actions that need approval.
     func perform(_ action: HelperAction, reason: String = "") async throws -> Data {
         if let fake { return try fake.perform(action) }
-        guard let keys else { throw Failure("Pair the app with the helper first.") }
+        guard let keys else { throw Failure("Connect to the helper first.") }
         // Approve first: a challenge is only good for a minute, and the user may take longer than that.
         let context = action.needsWriteKey ? try await approve(reason) : nil
         let request = try await encodeJSON(SignedRequest(challenge: challenge(), pairing: keys.publicKeys.read, action: action))

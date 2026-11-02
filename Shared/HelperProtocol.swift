@@ -69,6 +69,7 @@ enum HelperAction: Codable, Equatable {
     case state // HelperState
     case status(network: String) // nylon's StatusResponse, as protobuf
     case central(network: String) // the central.yaml that network runs with
+    case node(network: String) // its node.yaml, private key and all, so it needs the write key
     case probe(network: String, peer: String) // nylon's ProbeResponse, as protobuf
     case log(network: String, from: UInt64?) // LogChunk: the log from an offset, or its last 64 KB when from is nil
     case start(network: String)
@@ -84,7 +85,7 @@ enum HelperAction: Codable, Equatable {
     var needsWriteKey: Bool {
         switch self {
         case .state, .status, .central, .probe, .log: false
-        case .start, .stop, .reload, .importConfig, .remove, .setStartAtBoot, .setCommandLineTool, .unpair: true
+        case .node, .start, .stop, .reload, .importConfig, .remove, .setStartAtBoot, .setCommandLineTool, .unpair: true
         }
     }
 }

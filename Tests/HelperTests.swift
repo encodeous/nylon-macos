@@ -45,7 +45,7 @@ private func check(_ action: HelperAction, from keys: Keys, signedWith key: P256
                                    .importConfig(central: Data(), node: Data()), .remove(network: "nylon"),
                                    .setStartAtBoot(network: "nylon", true), .setCommandLineTool(installed: true), .unpair]
     for action in changes {
-        #expect(throws: Failure("The app's signature doesn't match its pairing.")) {
+        #expect(throws: Failure("The app's signature doesn't match its connection.")) {
             try check(action, from: keys, signedWith: keys.read, pairings: [pairing(keys)])
         }
     }
@@ -58,13 +58,13 @@ private func check(_ action: HelperAction, from keys: Keys, signedWith key: P256
     let pairings = [pairing(alice), pairing(bob, uid: 502)]
     let bobCaller = Caller(uid: 502, isAdministrator: true)
     #expect(try check(.stop(network: "nylon"), from: bob, signedWith: bob.write, pairings: pairings, caller: bobCaller) == .stop(network: "nylon"))
-    #expect(throws: Failure("This app isn't paired with the nylon helper.")) {
+    #expect(throws: Failure("This app isn't connected to the nylon helper.")) {
         try check(.status(network: "nylon"), from: bob, signedWith: bob.read, pairings: pairings) // bob's keys, used by alice
     }
-    #expect(throws: Failure("The app's signature doesn't match its pairing.")) {
+    #expect(throws: Failure("The app's signature doesn't match its connection.")) {
         try check(.stop(network: "nylon"), from: bob, signedWith: alice.write, pairings: pairings, caller: bobCaller) // alice's key, claiming bob's pairing
     }
-    #expect(throws: Failure("This app isn't paired with the nylon helper.")) {
+    #expect(throws: Failure("This app isn't connected to the nylon helper.")) {
         try check(.status(network: "nylon"), from: mallory, signedWith: mallory.read, pairings: pairings)
     }
 }
@@ -121,7 +121,7 @@ private func check(_ action: HelperAction, from keys: Keys, signedWith key: P256
     let challenge = challenges.issue()
     let status = request(.status(network: "nylon"), challenge: challenge, from: keys)
     let probe = request(.probe(network: "nylon", peer: "bob"), challenge: challenge, from: keys) // changed after signing
-    #expect(throws: Failure("The app's signature doesn't match its pairing.")) {
+    #expect(throws: Failure("The app's signature doesn't match its connection.")) {
         try checkRequest(probe, signature: sign(status, with: keys.read), challenges: &challenges, pairings: [pairing(keys)], caller: admin)
     }
     #expect(throws: Never.self) { try checkRequest(status, signature: sign(status, with: keys.read), challenges: &challenges, pairings: [pairing(keys)], caller: admin) }
@@ -140,7 +140,7 @@ private func pair(_ keys: Keys, proofKey: P256.Signing.PrivateKey? = nil, caller
 // config can run commands as root.
 @Test func pairingNeedsAnAdministrator() {
     #expect(throws: Never.self) { try pair(Keys()) }
-    #expect(throws: Failure("An administrator has to approve pairing.")) { try pair(Keys(), approved: false) }
+    #expect(throws: Failure("An administrator has to approve connecting.")) { try pair(Keys(), approved: false) }
     #expect(throws: Failure("Only an administrator's account can control nylon's helper.")) {
         try pair(Keys(), caller: Caller(uid: 502, isAdministrator: false))
     }
@@ -159,11 +159,11 @@ private func pair(_ keys: Keys, proofKey: P256.Signing.PrivateKey? = nil, caller
 // The proof must come from the read key being paired, answering a challenge from this connection.
 @Test func pairingNeedsItsOwnProof() {
     let keys = Keys()
-    #expect(throws: Failure("The pairing request wasn't signed with its own read key.")) { try pair(keys, proofKey: Keys().read) }
+    #expect(throws: Failure("The request to connect wasn't signed with its own key.")) { try pair(keys, proofKey: Keys().read) }
     var challenges = Challenges()
     let challenge = randomBytes(32) // not issued here
     let data = try! encodeJSON(keys.pairing)
-    #expect(throws: Failure("The pairing request's challenge is used, expired or from another connection.")) {
+    #expect(throws: Failure("The request to connect has a challenge that's used, expired or from another connection.")) {
         try checkPairing(keys: keys.pairing, keysData: data, challenge: challenge,
                          proof: sign(pairingMessage(challenge: challenge, keys: data), with: keys.read), challenges: &challenges,
                          caller: admin, approved: true)

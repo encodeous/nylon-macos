@@ -23,7 +23,7 @@ The helper runs as root, so the question is who it obeys.
 
    Only administrators pair, because nylon's config can run commands as root (`pre_up`, `post_up` and the like in `node.yaml`), so whoever controls nylon has root anyway. The helper takes the caller's uid from the XPC connection, so the kernel's word, not the app's, and checks it's in the `admin` group. Each pairing, the first after an install too, also needs an administrator's approval: the app asks for the `com.encodeous.nylon.admin` authorization right, which shows macOS's administrator prompt, and proves it holds the keys it's pairing by signing the request with its new read key (so there's no Touch ID prompt on top). The helper keeps the pairings in `/Library/Application Support/nylon/pairings.json`, one per user, each with both public keys, the user and when; only the user who made a pairing can use it. Changes also check the caller is still an administrator, so taking someone out of the admin group takes away their control. If the helper can't read its pairings file, nothing pairs and no request is accepted until uninstalling clears it.
 
-   The admin right is never removed: anyone may create an authorization right that doesn't exist, so a removed one could be put back as "allow". The helper sets the right's rule at launch, checks the rule is still "administrator, every time" before trusting an approval, and refuses connections if it isn't.
+   The admin right is never removed: anyone may create an authorization right that doesn't exist, so a removed one could be put back as "allow". The helper sets the right's rule at launch, checks the rule is still "administrator, every time" before trusting an approval, and refuses connections if it isn't. The rule keeps an approval good for 10 seconds and doesn't share it, so the helper can check the approval the app was just given, and nothing else can use it. With no time at all, the approval would expire before the helper checks it.
 3. **Requests.** Before each request the app asks the helper for a challenge: 32 random bytes, good once, for a minute, on that connection only, with at most 16 open per connection. The request is JSON holding the challenge, its pairing's read key and the action, signed with that pairing's key for the action (`Shared/Signing.swift`). The helper checks the signature, then spends the challenge, so a captured request can't be replayed and a bad signature can't use up a challenge. For write actions the app gets Touch ID first and the challenge after, so a slow prompt can't outlast it. Pairing answers a challenge the same way.
 
 4. **What runs as root.** The app belongs to the user who installed it, so the helper never runs the nylon inside it. It copies `Contents/Helpers/nylon` into `/Library/PrivilegedHelperTools/com.encodeous.nylon/`, owned by root, checks the copy is signed by its team as `com.encodeous.nylon.daemon` (the same rules as step 1), then moves it into place. Networks, `nylon verify` and the `nylon` command all use that copy. A new app version's nylon is installed the same way the next time the helper needs it, and one that fails the check never is.
@@ -61,7 +61,7 @@ Each network the app runs is its own nylon daemon (its own `nylon run` process),
 
 ## Logs
 
-The app follows a network's log through the helper (`log(network:from:)`, read key, since it only looks). The helper reads `/Library/Logs/nylon/<name>.log` from a byte offset, or about the last 64 KB the first time, and returns whole lines, at most 1 MB, with the offset to ask from next (`Shared/LogChunk.swift`). If the log is now shorter than the offset, it was rotated or truncated, so the reply starts from its beginning and says so. The log window asks once a second and keeps the last 5,000 lines. A nylon started outside the app logs wherever it was set up to, so the helper can't show it.
+The app follows a network's log through the helper (`log(network:from:)`, read key, since it only looks). The helper reads `/Library/Logs/nylon/<name>.log` from a byte offset, or about the last 64 KB the first time, and returns whole lines, at most 1 MB, with the offset to ask from next (`Shared/LogChunk.swift`). If the log is now shorter than the offset, it was rotated or truncated, so the reply starts from its beginning and says so. The Activity tab asks once a second and keeps the last 5,000 lines. A nylon started outside the app logs wherever it was set up to, so the helper can't show it.
 
 ## The helper's XPC interface
 
@@ -78,6 +78,7 @@ The app follows a network's log through the helper (`log(network:from:)`, read k
 | `state` | read | Every network and its status, and the `nylon` command's state |
 | `status(network)` | read | nylon's `StatusResponse` |
 | `central(network)` | read | The network's `central.yaml` |
+| `node(network)` | write | The network's `node.yaml`, for the config editor. It holds the private key, so it needs the write key |
 | `probe(network, peer)` | read | nylon's `ProbeResponse` |
 | `log(network, from)` | read | A `LogChunk` |
 | `start`, `stop`, `reload(network)` | write | State (`reload`: nylon's `ReloadResponse`) |

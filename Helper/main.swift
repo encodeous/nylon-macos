@@ -98,6 +98,7 @@ final class Session: NSObject, HelperXPC {
             return try nylon(network, .with { $0.probe = .with { $0.peerID = peer } }).probe.serializedData()
         case .reload(let network): return try nylon(network, .with { $0.reload = .init() }).reload.serializedData()
         case .central(let network): return try Data(contentsOf: supervisor.network(network).central) // not an external one's
+        case .node(let network): return try Data(contentsOf: supervisor.network(network).node)
         case .log(let network, let from): return try encodeJSON(supervisor.network(network).logChunk(from: from))
         case .start(let network): try supervisor.start(network)
         case .stop(let network): try supervisor.network(network).stop()
