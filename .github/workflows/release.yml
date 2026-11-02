@@ -74,7 +74,14 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/nylon.dmg dist/nylon-cli.zip --title "nylon $GITHUB_REF_NAME" --generate-notes
+        # Into the tag's release if there is one (made by hand, with its own notes), replacing files of the same name
+        # from an earlier run; otherwise a new release
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/nylon.dmg dist/nylon-cli.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/nylon.dmg dist/nylon-cli.zip --title "nylon $GITHUB_REF_NAME" --generate-notes
+          fi
 
       - name: Remove the keychain and keys
         if: always()
