@@ -123,7 +123,12 @@ private struct AboutView: View {
         VStack(spacing: 6) {
             Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 96, height: 96)
             Text("Nylon").font(.title.weight(.semibold))
-            Text("Version \(info("CFBundleShortVersionString")) (\(info("CFBundleVersion")))")
+            Text("Version \(info("CFBundleShortVersionString"))")
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            // the commit it was built from, stamped in at build time by scripts/git-version.sh
+            Text("Build \(info("NylonGitDescribe"))")
+                .font(.callout.monospaced())
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
             if let version = helper.version {

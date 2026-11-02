@@ -91,3 +91,4 @@ The job runs in the `release` environment (Settings → Environments): only `v*`
 | `scripts/build-nylon.sh` | Build phase: nylon from the submodule, universal, into `Contents/Helpers/nylon`. |
 | `scripts/check-proto.sh` | Build phase: fails if the generated protobuf code is stale. |
 | `scripts/app-icon.sh` | Build phase: the app icon from nylon's logo. |
+| `scripts/git-version.sh` | Build phase: stamps the commit the app was built from (`git describe`) into its Info.plist, for the About tab. |

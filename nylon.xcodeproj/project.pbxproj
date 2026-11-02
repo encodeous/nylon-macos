@@ -170,6 +170,7 @@
 				4E594C4F4E00000000000013 /* Frameworks */,
 				4E594C4F4E00000000000014 /* Resources */,
 				4E594C4F4E00000000000027 /* App Icon */,
+				4E594C4F4E00000000000060 /* Git Version */,
 				4E594C4F4E00000000000050 /* Build nylon */,
 				4E594C4F4E00000000000049 /* Helper */,
 				4E594C4F4E0000000000004B /* Launch Daemon */,
@@ -357,6 +358,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# Go's build cache makes this quick when nylon hasn't changed\n\"$SRCROOT/scripts/build-nylon.sh\"\n";
+		};
+		4E594C4F4E00000000000060 /* Git Version */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Git Version";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# every build: the commit can change without any file Xcode tracks changing\n\"$SRCROOT/scripts/git-version.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
