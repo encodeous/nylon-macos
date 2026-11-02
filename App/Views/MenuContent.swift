@@ -49,7 +49,8 @@ struct MenuContent: View {
     private func open(network: String?) {
         if let network { store.selection = network }
         dismiss()
-        showWindow { openWindow(id: "main") }
+        // until the helper is ready there's nothing for the main window to show, so setup instead
+        showWindow { openWindow(id: store.helper.setup == .ready ? "main" : "setup") }
     }
 }
 

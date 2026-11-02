@@ -46,7 +46,7 @@ final class HelperClient: ObservableObject {
         guard let hello = try? await hello() else {
             switch service.status {
             case .requiresApproval: return (.waitingForLoginItem, nil)
-            case .enabled: return (.failed("The helper is installed but isn't answering. See /Library/Logs/nylon/helper.log."), nil)
+            case .enabled: return (.failed("The helper is installed but isn't answering. Install it again to fix it."), nil)
             default: return (.notInstalled, nil)
             }
         }
@@ -58,6 +58,13 @@ final class HelperClient: ObservableObject {
     // Registers the launch daemon. macOS then asks the user to allow it in System Settings, which this opens.
     func install() async {
         if fake != nil { return }
+        // Registered but not answering: often registered by another copy of the app signed differently (an Xcode
+        // build, then the release). macOS only lets launchd start the helper signed like the copy that registered it,
+        // so register again from this one.
+        if service.status == .enabled, (try? await hello()) == nil {
+            try? await service.unregister()
+            disconnect()
+        }
         do {
             try service.register()
         } catch where service.status != .requiresApproval { // registered already, waiting to be allowed, is fine
@@ -163,22 +170,28 @@ final class HelperClient: ObservableObject {
         try await call { $0.challenge(reply: $1) }
     }
 
+    // short: it's how the app finds out whether the helper is there at all, every few seconds
     private func hello() async throws -> HelperHello {
-        try await decodeJSON(HelperHello.self, call { $0.hello(reply: $1) })
+        try await decodeJSON(HelperHello.self, call(timeout: 3) { $0.hello(reply: $1) })
     }
 
-    // Calls the helper on a background thread, failing if the connection breaks before it replies.
-    private func call<T>(_ body: @escaping (HelperXPC, @escaping (T) -> Void) -> Void) async throws -> T {
+    // Calls the helper, failing if the connection breaks or it doesn't answer in time. Without a limit, a helper launchd
+    // can't start (signed unlike the copy that registered it, say) leaves the call, and whatever waits on it, hanging.
+    private func call<T>(timeout: TimeInterval = 30, _ body: @escaping (HelperXPC, @escaping (T) -> Void) -> Void) async throws -> T {
         let connection = connect()
-        return try await Task.detached {
-            var result: Result<T, Error> = .failure(Failure("The helper didn't reply."))
-            let proxy = connection.synchronousRemoteObjectProxyWithErrorHandler {
-                result = .failure(Failure("Lost the connection to the helper: \($0.localizedDescription)"))
+        return try await withCheckedThrowingContinuation { continuation in
+            let reply = Reply(continuation)
+            let proxy = connection.remoteObjectProxyWithErrorHandler {
+                reply.finish(.failure(Failure("Lost the connection to the helper: \($0.localizedDescription)")))
             }
-            guard let helper = proxy as? HelperXPC else { throw Failure("The helper doesn't speak this app's protocol.") }
-            body(helper) { result = .success($0) }
-            return try result.get()
-        }.value
+            guard let helper = proxy as? HelperXPC else {
+                return reply.finish(.failure(Failure("The helper doesn't speak this app's protocol.")))
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+                reply.finish(.failure(Failure("The helper didn't answer.")))
+            }
+            body(helper) { reply.finish(.success($0)) }
+        }
     }
 
     private func disconnect() {
@@ -240,4 +253,20 @@ private final class AdminApproval: @unchecked Sendable {
     }
 
     deinit { AuthorizationFree(ref, []) }
+}
+
+// The one answer to a call: the helper's reply, a broken connection or the timeout, whichever comes first
+private final class Reply<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+
+    init(_ continuation: CheckedContinuation<T, Error>) { self.continuation = continuation }
+
+    func finish(_ result: Result<T, Error>) {
+        lock.lock()
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
+    }
 }
