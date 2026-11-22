@@ -43,7 +43,7 @@ struct MenuApp: App {
         }
         .defaultSize(width: 1080, height: 720)
         Window("Set Up Nylon", id: "setup") {
-            SetupView(store: store, helper: store.helper)
+            SetupView(helper: store.helper)
         }
         .windowResizability(.contentSize)
         WindowGroup("Edit Config", id: "editor", for: ConfigFile.self) { $file in

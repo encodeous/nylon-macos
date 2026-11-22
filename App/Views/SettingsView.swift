@@ -58,14 +58,15 @@ private struct HelperSettings: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Status") { Text(setupText) }
+                LabeledContent("Status") { Text(helper.setup.title) }
                 HStack {
                     Spacer()
-                    if helper.setup != .ready && helper.setup != .unsigned {
+                    if helper.setup != .ready && !helper.setup.stopped {
                         Button("Set Up…") { showWindow { openWindow(id: "setup") } }
                     }
+                    if helper.setup == .ready { RepairPairingButton(helper: helper) }
                     if helper.setup == .ready { Button("Disconnect") { Task { await store.attempt(helper.unpair) } } }
-                    if helper.setup != .unsigned && helper.setup != .notInstalled {
+                    if !helper.setup.busy && !helper.setup.stopped && helper.setup != .notInstalled {
                         Button("Uninstall…", role: .destructive) { uninstalling = true }
                             .help("Stops all networks for every user")
                     }
@@ -90,6 +91,7 @@ private struct HelperSettings: View {
                 }
             }
 
+            if helper.setup == .ready, let message = helper.coordinator.status.message { Text(message).foregroundStyle(.secondary) }
             if let error = store.error {
                 Section { Text(error).foregroundStyle(.red) }
             }
@@ -103,17 +105,6 @@ private struct HelperSettings: View {
         }
     }
 
-    private var setupText: String {
-        switch helper.setup {
-        case .unsigned: "This build isn't signed with a team"
-        case .notInstalled: "Not installed"
-        case .waitingForLoginItem: "Waiting for Login Items"
-        case .notPaired: "Not connected"
-        case .outdated(let version): "Outdated (\(version))"
-        case .ready: "Connected"
-        case .failed(let why): why
-        }
-    }
 }
 
 private struct AboutView: View {

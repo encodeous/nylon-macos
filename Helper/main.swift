@@ -43,7 +43,9 @@ final class Session: NSObject, HelperXPC {
     func hello(reply: @escaping (Data) -> Void) {
         supervisor.queue.async {
             let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-            reply((try? encodeJSON(HelperHello(version: version, paired: (Pairings.load() ?? []).map(\.keys.read)))) ?? Data())
+            let pairings = Pairings.load()
+            let mine = (pairings ?? []).filter { $0.uid == self.uid }.map(\.keys.read)
+            reply((try? encodeJSON(HelperHello(version: version, paired: mine, accountRepair: true, pairingsReadable: pairings != nil))) ?? Data())
         }
     }
 
@@ -54,10 +56,11 @@ final class Session: NSObject, HelperXPC {
     func pair(keys keysData: Data, challenge: Data, proof: Data, authorization: Data, reply: @escaping (String?) -> Void) {
         supervisor.queue.async {
             do {
-                let keys = try decodeJSON(PairingKeys.self, keysData)
+                let repair = try? decodeJSON(AccountRepair.self, keysData)
+                let keys = try repair?.keys ?? decodeJSON(PairingKeys.self, keysData)
                 try checkPairing(keys: keys, keysData: keysData, challenge: challenge, proof: proof, challenges: &self.challenges,
                                  caller: self.caller, approved: Pairings.authorized(authorization))
-                try Pairings.add(Pairing(keys: keys, uid: self.uid, user: userName(self.uid), since: Date()))
+                try Pairings.add(Pairing(keys: keys, uid: self.uid, user: userName(self.uid), since: Date()), repair: repair)
                 log("paired an app for \(userName(self.uid))")
                 reply(nil)
             } catch {

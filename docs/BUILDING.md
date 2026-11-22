@@ -25,7 +25,7 @@ Out of the box the app is signed ad hoc, which needs no Apple account. The helpe
 
 Building runs Go to compile nylon, so Go needs to be on your PATH, in mise, or in `/opt/homebrew/bin`.
 
-To use the real helper while you change the app, install it once from a Debug build copied somewhere stable, e.g. `/Applications/nylon.app`. Later Debug builds with the same version find it by its Mach service name and use its pairing, so rebuilding the app never reinstalls the helper. A helper from a release DMG won't do: it only lets in apps signed with Developer ID, which Debug builds aren't, and its version differs. Its logs are in `/Library/Logs/nylon`.
+To use the real helper while you change the app, install it once from a Debug build copied somewhere stable, e.g. `/Applications/nylon.app`. Later Debug builds with the same version find it by its Mach service name and use its pairing, so rebuilding the app never reinstalls the helper. A helper from a release DMG won't do: it only lets in apps signed with Developer ID, which Debug builds aren't, and its version differs. The helper writes to `/Library/Logs/nylon-helper.log`, and network logs are in `/Library/Logs/nylon`.
 
 From a terminal, `.dev/run.sh` builds the Debug app and starts it; arguments go to the app, e.g. `.dev/run.sh -fake YES`. `xcodebuild -scheme nylon -derivedDataPath build/DerivedData test` runs the tests.
 

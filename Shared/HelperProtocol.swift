@@ -30,13 +30,29 @@ enum Helper {
 
 struct HelperHello: Codable {
     var version: String
-    var paired: [Data] // each pairing's read key, so an app can tell whether it's paired, and whether anyone is
+    var paired: [Data] // this user's paired read keys
+    var accountRepair: Bool? = nil
+    var pairingsReadable: Bool? = nil // absent from older helpers
 }
 
 // Public keys, in X9.63 form, of the two Secure Enclave keys an app made.
 struct PairingKeys: Codable, Equatable {
     var read: Data // signs requests that only look
     var write: Data // signs requests that change anything; needs Touch ID or the user's password
+}
+
+// The proof covers this entire envelope. The helper checks the caller UID and expected prior keys
+// in its serial queue so a delayed repair cannot overwrite a more recent one.
+struct AccountRepair: Codable {
+    var keys: PairingKeys
+    var expected: [Data]
+
+    func replacing(in pairings: [Pairing], with new: Pairing) throws -> [Pairing] {
+        guard Set(pairings.filter { $0.uid == new.uid }.map(\.keys.read)) == Set(expected) else {
+            throw Failure("This account's pairing changed. Check the helper again.")
+        }
+        return pairings.filter { $0.uid != new.uid } + [new]
+    }
 }
 
 // An app the helper does what it asks: its keys, and the macOS user who paired it. Only that user can use it.

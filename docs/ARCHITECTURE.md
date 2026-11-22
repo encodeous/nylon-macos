@@ -32,9 +32,60 @@ This is meant to hold even if the team's signing certificate leaks: a program si
 
 ## Installing and removing the helper
 
+The app reconstructs setup from Service Management, a signed helper connection and the user's saved keys whenever it launches. The diagram follows first launch and recovery.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Preflight
+    Preflight --> Stopped: Missing team signature, admin account, or Secure Enclave
+    Stopped --> [*]
+    Preflight --> Inspect: Requirements met
+    Inspect --> InstallNeeded: No registered helper
+    Inspect --> AwaitApproval: macOS requires approval
+    Inspect --> Starting: Registered but no reply
+    Inspect --> UpdateNeeded: Version or protocol differs
+    Inspect --> ConnectNeeded: No matching pairing
+    Inspect --> Verify: Accepted pending or unverified current key
+    Inspect --> Ready: Verified current key still paired
+    Inspect --> NeedsAttention: Inspection error
+
+    InstallNeeded --> Register: Install
+    Register --> Inspect: Check result after success or failure
+    AwaitApproval --> Inspect: Poll system status
+    Starting --> Inspect: Poll again
+    Starting --> Unreachable: Three missed replies
+    Unreachable --> Inspect: Poll or Try Again
+    Unreachable --> Update: Re-register Helper
+    UpdateNeeded --> Update: Update Helper
+    Update --> Inspect: Check registration
+
+    ConnectNeeded --> Pair: Connect
+    Pair --> Inspect: Approved, cancelled, or reply lost
+    Verify --> Ready: Signed read succeeds and keys committed
+    Verify --> Verify: Try another accepted local key
+    Verify --> VerificationFailed: No verified key or commit failed
+    VerificationFailed --> Inspect: Up to three attempts, then Try Again
+    VerificationFailed --> RepairAccount: User confirms re-pair
+    ConnectNeeded --> RepairAccount: User requests repair after failure
+    Ready --> RepairAccount: User requests repair in Settings
+    RepairAccount --> Inspect: Reconcile even after timeout
+    NeedsAttention --> Inspect: Recheck system
+    Ready --> Inspect: Poll or relaunch
+```
+
+Only one setup mutation runs at a time. A poll that started before a user action cannot overwrite its result. A transient registration error gets one automatic retry if inspection still finds the service unregistered. Startup probes continue after the third miss, when the window also offers explicit repair.
+
+Pairing stages the device-bound keys in `keys.json.pending` before requesting administrator approval. A per-user file lock serializes setup across app copies. After a timeout or restart, a matching pending public key resumes verification. A successful signed read allows the atomic rename to `keys.json`. An unaccepted pending key can be reused on the next Connect. Cancellation returns to the Connect step and waits for the user.
+
+Each setup operation and its follow-up inspection have a two-minute deadline. After timeout the app checks what actually happened. A late result cannot commit a file or continue from unregister to register. An outstanding Service Management request may still complete in macOS. A retry reports the outstanding request until macOS replies or its status confirms the change.
+
+Verification tries the accepted replacement, pending and committed keys in that order. Re-pair This Account stages fresh keys in `keys.json.replacement`. The helper validates the administrator right, caller UID, challenge and new key’s proof. It then atomically replaces only that UID’s pairings if its prior keys still match the signed request. A signed read with the new key completes the local commit. A missing prerequisite stops setup for this launch and displays its specific reason.
+
+The helper writes its startup diagnostics to `/Library/Logs/nylon-helper.log`. Its parent directory exists before the first network starts.
+
 - **Install:** the app registers the helper with `SMAppService`, the user allows it under Login Items, then pairs the app with an administrator's approval.
 - **Unpair:** removes this app's pairing. The helper keeps running, for anyone else paired.
-- **Uninstall:** needs an administrator, not a pairing, so any user can remove a helper someone else set up. The helper stops every network and removes every pairing, the installed nylon and its `/usr/local/bin/nylon` link, then exits, and the app unregisters it. Each network's config (its private key and `central.yaml`) and the logs stay, so installing again finds the networks; only pairing starts over. If the helper doesn't answer, the app unregisters it anyway and says the cleanup didn't happen.
+- **Uninstall:** requires an administrator and works even when the local pairing is broken. The helper stops every network and removes every pairing, the installed nylon and its `/usr/local/bin/nylon` link, then exits, and the app unregisters it. Each network's config (its private key and `central.yaml`) and the logs stay, so installing again finds the networks; only pairing starts over. If the helper doesn't answer, the app unregisters it anyway and says the cleanup didn't happen.
 - **App deleted:** the helper checks every minute that its app is still there. Gone two checks in a row (an update replaces the app for a moment), it stops its networks, removes the installed nylon and the `nylon` link, and exits; launchd can't start a helper whose binary is gone. Moving the app looks the same, so after moving it, open it to set the helper up again.
 - **Helper crashed:** nylon runs in its own process group, so it outlives a helper that crashes or is killed. At launch the helper asks each of its networks' sockets which process serves it, and adopts the ones running its installed nylon. Stopping signals every network at once, then waits, inside launchd's 30 second `ExitTimeOut`.
 - **Old helper:** if the helper's version isn't the app's, the app offers to update it, which unregisters and registers it again so launchd runs the new one.

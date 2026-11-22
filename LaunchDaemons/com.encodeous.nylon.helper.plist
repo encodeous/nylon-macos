@@ -24,6 +24,6 @@
 	<key>ExitTimeOut</key>
 	<integer>30</integer>
 	<key>StandardErrorPath</key>
-	<string>/Library/Logs/nylon/helper.log</string>
+	<string>/Library/Logs/nylon-helper.log</string>
 </dict>
 </plist>

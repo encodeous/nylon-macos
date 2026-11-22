@@ -4,7 +4,6 @@ import SwiftUI
 // First run: install the helper, allow it in Login Items, pair. A window of its own, sized to fit; once the helper is
 // ready it closes and the main window opens.
 struct SetupView: View {
-    @ObservedObject var store: NodeStore
     @ObservedObject var helper: HelperClient
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
@@ -19,32 +18,14 @@ struct SetupView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(spacing: 4) {
-                step(1, "Install the helper", done: installed, current: helper.setup == .notInstalled || isFailed) {
-                    Button("Install") { Task { await helper.install() } }
-                }
-                step(2, "Allow it in Login Items", done: installed && helper.setup != .waitingForLoginItem,
-                     current: helper.setup == .waitingForLoginItem) {
-                    Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
-                }
-                step(3, "Connect to the helper", done: false, current: helper.setup == .notPaired) {
-                    Button("Connect…") { Task { await store.attempt(helper.pair) } }
-                        .help("Requires administrator rights")
+            VStack(spacing: 10) {
+                Text(helper.setup.title).font(.headline)
+                if helper.setup.busy || helper.setup == .starting { ProgressView().controlSize(.small) }
+                actions.primaryAction().controlSize(.large)
+                if let message = helper.coordinator.status.message {
+                    Text(message).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
-
-            if case .outdated(let version) = helper.setup {
-                VStack(spacing: 10) {
-                    Text("The helper is from version \(version).").foregroundStyle(.secondary)
-                    Button("Update Helper") { Task { await store.attempt(helper.update) } }
-                        .primaryAction()
-                }
-            }
-            if case .failed(let why) = helper.setup { Text(why).foregroundStyle(.red).textSelection(.enabled) }
-            if helper.setup == .unsigned {
-                Text("This build isn't signed with a team, so it can't use the helper.").foregroundStyle(.secondary)
-            }
-            if let error = store.error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
         }
         .multilineTextAlignment(.center)
         .padding(.horizontal, 36)
@@ -59,7 +40,7 @@ struct SetupView: View {
         .toolbarBackground(.hidden, for: .windowToolbar)
         .windowGlass()
         .background(FixedWindow())
-        .onChange(of: helper.setup) { _, setup in
+        .onChange(of: helper.setup, initial: true) { _, setup in
             if setup == .ready {
                 openWindow(id: "main")
                 dismissWindow(id: "setup")
@@ -67,32 +48,66 @@ struct SetupView: View {
         }
     }
 
-    private var installed: Bool {
+    @ViewBuilder private var actions: some View {
         switch helper.setup {
-        case .notInstalled, .unsigned, .failed: false
-        default: true
+        case .notInstalled:
+            Button("Install") { Task { await helper.coordinator.install() } }
+        case .waitingForLoginItem:
+            Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
+        case .notPaired:
+            Button("Connect…") { Task { await helper.coordinator.connect() } }
+            if helper.coordinator.status.message != nil { RepairPairingButton(helper: helper) }
+        case .outdated:
+            Button("Update Helper") { Task { await helper.coordinator.update() } }
+        case .unreachable:
+            HStack {
+                Button("Try Again") { Task { await helper.coordinator.retry() } }
+                Button("Re-register Helper") { Task { await helper.coordinator.update() } }
+            }
+        case .verificationFailed:
+            Button("Try Again") { Task { await helper.coordinator.retry() } }
+            RepairPairingButton(helper: helper)
+        case .blocked:
+            Button("Try Again") { Task { await helper.coordinator.retry() } }
+        default: EmptyView()
         }
     }
+}
 
-    private var isFailed: Bool {
-        if case .failed = helper.setup { true } else { false }
+struct RepairPairingButton: View {
+    @ObservedObject var helper: HelperClient
+    @State private var confirming = false
+
+    var body: some View {
+        Button("Re-pair This Account…") { confirming = true }
+            .confirmationDialog("Replace the pairing keys for this macOS account?", isPresented: $confirming) {
+                Button("Re-pair This Account") { Task { await helper.coordinator.connect(replacing: true) } }
+            } message: {
+                Text("An administrator must approve new keys. This replaces this account’s existing helper pairings. Other users and running networks keep their current settings.")
+            }
     }
+}
 
-    // A step: a numbered row, the current one raised on glass with its action
-    private func step(_ number: Int, _ title: String, done: Bool, current: Bool, @ViewBuilder action: () -> some View) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: done ? "checkmark.circle.fill" : current ? "\(number).circle.fill" : "\(number).circle")
-                .font(.title2)
-                .foregroundStyle(done ? Color.green : current ? Color.accentColor : Color.secondary)
-            Text(title)
-                .fontWeight(current ? .semibold : .regular)
-                .foregroundStyle(current || done ? .primary : .secondary)
-            Spacer()
-            if current { action().primaryAction().controlSize(.large) }
+extension SetupPhase {
+    var title: String {
+        switch self {
+        case .checking: "Checking setup…"
+        case .stopped(let reason): reason.rawValue
+        case .notInstalled: "Install the helper"
+        case .registering: "Registering the helper…"
+        case .waitingForLoginItem: "Allow the helper in Login Items"
+        case .starting: "Waiting for the helper to respond…"
+        case .unreachable: "The registered helper is still not responding."
+        case .outdated(let version): "Update the helper from version \(version)"
+        case .updating: "Updating the helper registration…"
+        case .notPaired: "Connect to the helper"
+        case .pairing: "Connecting to the helper…"
+        case .verifying: "Verifying the pairing…"
+        case .verificationFailed: "Could not verify the pairing"
+        case .ready: "Connected"
+        case .removing: "Disconnecting the helper…"
+        case .blocked: "Setup needs attention"
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, current ? 14 : 10)
-        .stepCard(current)
     }
 }
 
@@ -116,17 +131,6 @@ private struct FixedWindow: NSViewRepresentable {
 }
 
 private extension View {
-    // the current step's card: Liquid Glass on macOS 26, a tint before
-    @ViewBuilder func stepCard(_ raised: Bool) -> some View {
-        if !raised {
-            self
-        } else if #available(macOS 26, *) {
-            glassEffect(.regular, in: .rect(cornerRadius: 16))
-        } else {
-            background(RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(0.08)))
-        }
-    }
-
     @ViewBuilder func primaryAction() -> some View {
         if #available(macOS 26, *) { buttonStyle(.glassProminent) } else { buttonStyle(.borderedProminent) }
     }

@@ -13,14 +13,15 @@ enum Pairings {
     }
 
     // Adds pairing, replacing any with the same read key. Refuses rather than overwrite pairings it can't read.
-    static func add(_ pairing: Pairing) throws {
+    static func add(_ pairing: Pairing, repair: AccountRepair? = nil) throws {
         guard let pairings = load() else { throw Failure("The helper can't read its pairings. Uninstall it to start over.") }
-        try save(pairings.filter { $0.keys.read != pairing.keys.read } + [pairing])
+        if let repair { try save(repair.replacing(in: pairings, with: pairing)) }
+        else { try save(pairings.filter { $0.uid != pairing.uid || $0.keys.read != pairing.keys.read } + [pairing]) }
     }
 
     static func remove(_ pairing: Pairing) throws {
         guard let pairings = load() else { throw Failure("The helper can't read its pairings.") }
-        try save(pairings.filter { $0.keys.read != pairing.keys.read })
+        try save(pairings.filter { $0.uid != pairing.uid || $0.keys.read != pairing.keys.read })
     }
 
     private static func save(_ pairings: [Pairing]) throws {
