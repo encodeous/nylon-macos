@@ -20,6 +20,10 @@ struct PairingFiles {
 
     private var replacement: URL { current.appendingPathExtension("replacement") }
 
+    func hasSavedKeys() throws -> Bool {
+        try [replacement, pending, current].contains { try read($0) != nil }
+    }
+
     func read(_ url: URL) throws -> Data? {
         do { return try Data(contentsOf: url) }
         catch let error as CocoaError where error.code == .fileReadNoSuchFile { return nil }
@@ -62,6 +66,7 @@ struct PairingFiles {
             try Task.checkCancellation()
             // Commit errors must be retried with the same verified key.
             if candidate.file != current { try commit(from: candidate.file) }
+            else { try syncDirectory() } // a previous rename may have succeeded before its directory sync failed
             return candidate.keys
         }
         throw failure

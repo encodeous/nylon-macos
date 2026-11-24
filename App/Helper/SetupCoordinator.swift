@@ -1,7 +1,7 @@
 import Foundation
 
 enum SetupPhase: Equatable {
-    case stopped(SetupRequirement), checking, notInstalled, registering, waitingForLoginItem, starting, unreachable
+    case stopped(SetupRequirement), checking, notInstalled, registering, registrationPending, waitingForLoginItem, repairingRegistration, starting, unreachable, restartingHelper
     case outdated(helper: String), updating, notPaired, pairing, verifying, verificationFailed
     case ready, removing, blocked
 
@@ -12,7 +12,7 @@ enum SetupPhase: Equatable {
 
     var busy: Bool {
         switch self {
-        case .checking, .registering, .updating, .pairing, .verifying, .removing: true
+        case .checking, .registering, .registrationPending, .repairingRegistration, .restartingHelper, .updating, .pairing, .verifying, .removing: true
         default: false
         }
     }
@@ -35,15 +35,26 @@ enum SetupRequirement: String, CaseIterable {
 enum SetupObservation {
     case stable(SetupPhase, version: String? = nil)
     case unreachable(String)
+    case freshPairingNeeded(version: String)
     case needsVerification(version: String)
+}
+
+enum RegistrationRepairReason: Equatable {
+    case approval, startup
 }
 
 @MainActor protocol SetupDriver: AnyObject {
     func inspectSetup() async throws -> SetupObservation
     func registerHelper() async throws
+    func repairRegistration(_ reason: RegistrationRepairReason) async throws
     func replaceRegistration() async throws
     func enroll(replacing: Bool) async throws
+    func enrollFresh() async throws
     func verifyAndCommit() async throws
+}
+
+extension SetupDriver {
+    func enrollFresh() async throws { try await enroll(replacing: false) }
 }
 
 @MainActor final class SetupCoordinator {
@@ -53,16 +64,114 @@ enum SetupObservation {
         var message: String?
     }
 
-    private(set) var status = Status() {
-        willSet { if newValue != status { willChange() } }
+    // Reduces observed state and operation outcomes without making any system calls.
+    private struct State {
+        var status = Status()
+        private enum PairingIntent { case off, requested, registrationAttempted }
+        private var pairingIntent = PairingIntent.off
+        private var missedHellos = 0
+        private var failedVerifications = 0
+        private let retryLimit = 3
+
+        var willContinueAutomatically: Bool { pairingIntent == .registrationAttempted }
+
+        mutating func begin(_ phase: SetupPhase) {
+            if phase != .repairingRegistration {
+                pairingIntent = phase == .registering ? .requested : .off
+            }
+            resetRetries()
+            status = Status(phase: phase, version: status.version)
+        }
+
+        mutating func registrationAttempted() {
+            if pairingIntent == .requested { pairingIntent = .registrationAttempted }
+        }
+
+        mutating func cancelAutomaticSetup() { pairingIntent = .off }
+
+        mutating func resetRetries() {
+            missedHellos = 0
+            failedVerifications = 0
+        }
+
+        // A version returned here requests a signed read before advancing to Ready.
+        mutating func observe(_ observation: SetupObservation) -> String? {
+            switch observation {
+            case .stable(let phase, let version):
+                if phase != .waitingForLoginItem && phase != .registrationPending { cancelAutomaticSetup() }
+                settle(phase, version: version)
+            case .freshPairingNeeded(let version):
+                settle(.notPaired, version: version)
+            case .unreachable(let reason):
+                failedVerifications = 0
+                missedHellos = min(retryLimit, missedHellos + 1)
+                if missedHellos == retryLimit { cancelAutomaticSetup() }
+                // Keep a verified session through brief helper interruptions.
+                if status.phase == .ready && missedHellos < retryLimit { return nil }
+                let phase: SetupPhase = missedHellos < retryLimit ? .starting : .unreachable
+                let message = phase == .unreachable && status.phase == phase ? status.message ?? reason : reason
+                status = Status(phase: phase, message: message)
+            case .needsVerification(let version):
+                cancelAutomaticSetup()
+                missedHellos = 0
+                guard failedVerifications < retryLimit else { return nil }
+                status = Status(phase: .verifying, version: version)
+                return version
+            }
+            return nil
+        }
+
+        private mutating func settle(_ phase: SetupPhase, version: String?) {
+            resetRetries()
+            let message = status.phase == phase ? status.message : nil
+            status = Status(phase: phase, version: version, message: message)
+        }
+
+        mutating func inspectionFailed(_ error: Error) {
+            cancelAutomaticSetup()
+            resetRetries()
+            status = Status(phase: .blocked, message: error.localizedDescription)
+        }
+
+        mutating func verificationFinished(version: String, result: Result<Void, Error>) {
+            switch result {
+            case .success:
+                failedVerifications = 0
+                status = Status(phase: .ready, version: version)
+            case .failure(let error):
+                failedVerifications += 1
+                status = Status(phase: .verificationFailed, version: version, message: error.localizedDescription)
+            }
+        }
+
+        mutating func transitionFailed(_ phase: SetupPhase, error: Error, reportWhileReady: Bool) {
+            guard phase != .removing, !status.phase.stopped, reportWhileReady || status.phase != .ready else { return }
+            if phase == .registering {
+                switch status.phase {
+                case .waitingForLoginItem, .starting, .unreachable, .outdated, .notPaired, .verificationFailed:
+                    return // Postflight observed registration or a later setup step.
+                default: break
+                }
+            }
+            if phase == .restartingHelper, status.phase == .starting {
+                missedHellos = retryLimit
+                status.phase = .unreachable
+            }
+            status.message = [error.localizedDescription, status.message].compactMap { $0 }.joined(separator: "\n")
+        }
+    }
+
+    private var state = State() {
+        willSet {
+            if newValue.status != state.status || newValue.willContinueAutomatically != state.willContinueAutomatically {
+                willChange()
+            }
+        }
     }
     private unowned let driver: any SetupDriver
     private let willChange: () -> Void
     private var generation = 0
     private var exclusive = false
-    private var missedHellos = 0
-    private var failedVerifications = 0
-    private let retryLimit = 3
     private let deadline: Duration
 
     init(driver: any SetupDriver, deadline: Duration = .seconds(120), willChange: @escaping () -> Void = {}) {
@@ -71,40 +180,82 @@ enum SetupObservation {
         self.willChange = willChange
     }
 
-    // NodeStore polls at launch and every five seconds. A click supersedes any read-only poll in flight.
-    func refresh() async {
-        guard !exclusive, !status.phase.stopped else { return }
-        generation += 1
-        await reconcile(generation)
-    }
+    var status: Status { state.status }
+    var willContinueAutomatically: Bool { state.willContinueAutomatically }
 
-    func retry() async {
+    func refresh() async { await poll() }
+    func retry() async { await poll(resetRetries: true) }
+
+    // NodeStore polls at launch and every five seconds. A click supersedes any poll in flight.
+    private func poll(resetRetries: Bool = false) async {
         guard !exclusive, !status.phase.stopped else { return }
-        resetRetries()
-        await refresh()
+        if resetRetries { state.resetRetries() }
+        generation += 1
+        let ticket = generation
+        await reconcile(ticket)
+        guard generation == ticket else { return }
+        await continueFreshSetupIfNeeded()
     }
 
     func install() async {
         guard status.phase == .notInstalled else { return }
-        await transition(.registering) {
-            do { try await self.driver.registerHelper() }
-            catch {
-                // Only retry a transient system error, and only after confirming that registration did not take.
-                let failure = error as NSError
-                guard failure.domain == NSPOSIXErrorDomain,
-                      [Int(EAGAIN), Int(EBUSY), Int(EINTR), Int(ETIMEDOUT)].contains(failure.code) else { throw error }
-                try await Task.sleep(for: .milliseconds(250))
-                if case .stable(.notInstalled, _) = try await self.driver.inspectSetup() { try await self.driver.registerHelper() }
-            }
-        }
+        await changeRegistration(.registering) { try await self.installWithRetry() }
     }
 
     func update() async {
+        guard case .outdated = status.phase else { return }
+        await changeRegistration(.updating) { try await self.driver.replaceRegistration() }
+    }
+
+    func repairRegistration() async {
         switch status.phase {
-        case .outdated, .unreachable: break
-        default: return
+        case .waitingForLoginItem:
+            await changeRegistration(.repairingRegistration) { try await self.driver.repairRegistration(.approval) }
+        case .unreachable:
+            await changeRegistration(.restartingHelper) { try await self.driver.repairRegistration(.startup) }
+        default: break
         }
-        await transition(.updating) { try await self.driver.replaceRegistration() }
+    }
+
+    private func changeRegistration(_ progress: SetupPhase, _ work: @escaping @MainActor () async throws -> Void) async {
+        let previousPhase = status.phase
+        await transition(progress) {
+            guard try await self.registrationStillMatches(previousPhase) else { return }
+            try await work()
+        }
+        await continueFreshSetupIfNeeded()
+    }
+
+    // A signed XPC reply or a newer system status supersedes the button's snapshot.
+    private func registrationStillMatches(_ previousPhase: SetupPhase) async throws -> Bool {
+        let observation = try await driver.inspectSetup()
+        try Task.checkCancellation()
+        switch (previousPhase, observation) {
+        case (.unreachable, .unreachable), (.outdated, .stable(.outdated, _)): return true
+        case (.unreachable, _): return false
+        case (_, .stable(let phase, _)): return previousPhase == phase
+        default: return false
+        }
+    }
+
+    private func installWithRetry() async throws {
+        state.registrationAttempted()
+        do { try await driver.registerHelper() }
+        catch {
+            let failure = error as NSError
+            guard failure.domain == NSPOSIXErrorDomain,
+                  [Int(EAGAIN), Int(EBUSY), Int(EINTR), Int(ETIMEDOUT)].contains(failure.code) else { throw error }
+            try await Task.sleep(for: .milliseconds(250))
+            if try await registrationStillMatches(.notInstalled) { try await driver.registerHelper() }
+        }
+    }
+
+    func cancelAutomaticSetup() { state.cancelAutomaticSetup() }
+
+    private func continueFreshSetupIfNeeded() async {
+        guard !exclusive, willContinueAutomatically, status.phase == .notPaired else { return }
+        // Entering Pairing consumes the original setup action before any RPC or prompt.
+        await transition(.pairing) { try await self.driver.enrollFresh() }
     }
 
     func connect(replacing: Bool = false) async {
@@ -112,84 +263,49 @@ enum SetupObservation {
         await transition(.pairing, reportWhileReady: replacing) { try await self.driver.enroll(replacing: replacing) }
     }
 
-    // Settings can be open alongside Setup. Its mutations use the same exclusion and reconciliation.
+    // Settings mutations share setup exclusion. Their errors are delivered to the Settings caller.
     func remove(_ work: @escaping @MainActor () async throws -> Void) async throws {
-        guard !exclusive, !status.phase.stopped, !status.phase.busy else { throw Failure("Another helper setup operation is in progress.") }
-        begin(.removing)
-        defer { exclusive = false }
-        do { try await bounded(work) }
-        catch {
-            await reconcile(generation)
-            throw error
-        }
-        await reconcile(generation)
+        if let error = await transition(.removing, work: work) { throw error }
     }
 
-    private func begin(_ phase: SetupPhase) {
+    @discardableResult
+    private func transition(_ phase: SetupPhase, reportWhileReady: Bool = false, work: @escaping @MainActor () async throws -> Void) async -> Error? {
+        guard !exclusive, !status.phase.stopped, phase != .removing || !status.phase.busy else {
+            return phase == .removing ? Failure("Another helper setup operation is in progress.") : nil
+        }
         generation += 1
+        let ticket = generation
         exclusive = true
-        resetRetries()
-        status = Status(phase: phase, version: status.version)
-    }
-
-    private func bounded<T>(_ work: @escaping @MainActor () async throws -> T) async throws -> T {
-        try await SetupDeadline<T>().run(for: deadline, work)
-    }
-
-    private func resetRetries() {
-        missedHellos = 0
-        failedVerifications = 0
-    }
-
-    private func transition(_ phase: SetupPhase, reportWhileReady: Bool = false, work: @escaping @MainActor () async throws -> Void) async {
-        guard !exclusive, !status.phase.stopped else { return }
-        begin(phase)
         defer { exclusive = false }
-        var operationError: String?
-        do { try await bounded(work) }
-        catch { operationError = error.localizedDescription }
+        state.begin(phase)
+
+        let result = await run(work)
         // Even a failed RPC can have committed remotely. Recover from the observed postcondition.
-        await reconcile(generation)
-        if let operationError, (reportWhileReady || status.phase != .ready), !status.phase.stopped {
-            status.message = [operationError, status.message].compactMap { $0 }.joined(separator: "\n")
-        }
+        await reconcile(ticket)
+        guard case .failure(let error) = result else { return nil }
+        state.transitionFailed(phase, error: error, reportWhileReady: reportWhileReady)
+        return error
+    }
+
+    private func run<Value>(_ work: @escaping @MainActor () async throws -> Value) async -> Result<Value, Error> {
+        do { return .success(try await SetupDeadline<Value>().run(for: deadline, work)) }
+        catch { return .failure(error) }
     }
 
     private func reconcile(_ ticket: Int) async {
-        do {
-            let observation = try await bounded { try await self.driver.inspectSetup() }
-            guard generation == ticket else { return }
-            switch observation {
-            case .stable(let phase, let version):
-                resetRetries()
-                let message = phase == status.phase ? status.message : nil
-                status = Status(phase: phase, version: version, message: message)
-            case .unreachable(let reason):
-                failedVerifications = 0
-                missedHellos = min(retryLimit, missedHellos + 1)
-                // A single missed heartbeat after setup should not close an already usable main window.
-                if status.phase == .ready && missedHellos < retryLimit { return }
-                status = Status(phase: missedHellos < retryLimit ? .starting : .unreachable, message: reason)
-            case .needsVerification(let version):
-                missedHellos = 0
-                guard failedVerifications < retryLimit else { return }
-                let alreadyExclusive = exclusive
-                exclusive = true
-                defer { exclusive = alreadyExclusive }
-                status = Status(phase: .verifying, version: version)
-                do {
-                    try await bounded { try await self.driver.verifyAndCommit() }
-                    failedVerifications = 0
-                    status = Status(phase: .ready, version: version)
-                } catch {
-                    failedVerifications += 1
-                    status = Status(phase: .verificationFailed, version: version, message: error.localizedDescription)
-                }
-            }
-        } catch {
-            guard generation == ticket else { return }
-            resetRetries()
-            status = Status(phase: .blocked, message: error.localizedDescription)
+        let inspection = await run { try await self.driver.inspectSetup() }
+        guard generation == ticket else { return }
+        switch inspection {
+        case .success(let observation):
+            guard let version = state.observe(observation) else { return }
+
+            let alreadyExclusive = exclusive
+            exclusive = true
+            defer { exclusive = alreadyExclusive }
+            let result = await run { try await self.driver.verifyAndCommit() }
+            state.verificationFinished(version: version, result: result)
+        case .failure(let error):
+            state.inspectionFailed(error)
         }
     }
 }

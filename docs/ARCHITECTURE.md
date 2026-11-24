@@ -49,17 +49,20 @@ stateDiagram-v2
     Inspect --> Ready: Verified current key still paired
     Inspect --> NeedsAttention: Inspection error
 
-    InstallNeeded --> Register: Install
+    InstallNeeded --> Register: Start Setup
     Register --> Inspect: Check result after success or failure
     AwaitApproval --> Inspect: Poll system status
+    AwaitApproval --> RepairRegistration: User confirms they allowed Nylon
+    RepairRegistration --> Inspect: Recheck after the repair attempt
     Starting --> Inspect: Poll again
     Starting --> Unreachable: Three missed replies
-    Unreachable --> Inspect: Poll or Try Again
-    Unreachable --> Update: Re-register Helper
+    Unreachable --> Inspect: Poll system status
+    Unreachable --> RestartHelper: Try Again
+    RestartHelper --> Inspect: Check response after startup retry
     UpdateNeeded --> Update: Update Helper
     Update --> Inspect: Check registration
 
-    ConnectNeeded --> Pair: Connect
+    ConnectNeeded --> Pair: Start Setup continuation or Connect
     Pair --> Inspect: Approved, cancelled, or reply lost
     Verify --> Ready: Signed read succeeds and keys committed
     Verify --> Verify: Try another accepted local key
@@ -73,11 +76,19 @@ stateDiagram-v2
     Ready --> Inspect: Poll or relaunch
 ```
 
-Only one setup mutation runs at a time. A poll that started before a user action cannot overwrite its result. A transient registration error gets one automatic retry if inspection still finds the service unregistered. Startup probes continue after the third miss, when the window also offers explicit repair.
+The setup state keeps the visible step, retry counts and first-launch pairing intent together. The coordinator runs one mutation at a time and reconciles with a fresh observation after it returns. It rechecks a registration action before it runs and discards observations from older polls. A signed XPC reply takes precedence over the registration status for this app copy. If there is no reply and Service Management reports `.notRegistered` or `.notFound`, the app goes back to the first step and validates the bundled launch daemon plist and executable before offering Start Setup. A transient registration error gets one automatic retry if inspection still finds the app can register. Startup probes continue after the third miss.
+
+Start Setup authorizes the app to continue to the administrator prompt once after Login Items approval and a compatible XPC handshake. The app rechecks under the per-user lock that neither side has saved pairing keys before prompting automatically. Closing the setup window, restarting, or reaching an error that needs attention clears this intent. Existing or resumed installations can still proceed with Connect.
+
+Returning from System Settings re-reads the current system and helper state. Service Management can report a registered helper waiting for approval while no job is loaded in launchd. If the user chooses **I’ve Allowed Nylon**, the app checks again. If the helper still needs approval and XPC fails, the app waits for unregistration and attempts registration once. The pairing files stay in place. The resulting system status and XPC reply determine where setup resumes.
+
+Service Management reports this bundle’s registration and approval. Its enabled status makes the daemon eligible to run. A code-signing-checked XPC hello proves the helper can answer, and a signed state request establishes that the saved pairing works. For on-machine diagnosis, `launchctl print system/com.encodeous.nylon.helper` reports the job loaded in the system domain, including its state and last exit status. The label’s value in `launchctl print-disabled system` only reports its enable override. The app uses the Service Management and XPC APIs because the `launchctl print` format is intended for interactive diagnosis and is not a stable API.
+
+If the approved helper does not answer after three probes, **Try Again** rechecks the live state and asks Service Management to start it. If registration reports that the helper is already registered, the app rechecks XPC and approval before replacing the registration once. This preserves the pairing files and network configuration.
 
 Pairing stages the device-bound keys in `keys.json.pending` before requesting administrator approval. A per-user file lock serializes setup across app copies. After a timeout or restart, a matching pending public key resumes verification. A successful signed read allows the atomic rename to `keys.json`. An unaccepted pending key can be reused on the next Connect. Cancellation returns to the Connect step and waits for the user.
 
-Each setup operation and its follow-up inspection have a two-minute deadline. After timeout the app checks what actually happened. A late result cannot commit a file or continue from unregister to register. An outstanding Service Management request may still complete in macOS. A retry reports the outstanding request until macOS replies or its status confirms the change.
+Each setup operation and its follow-up inspection have a two-minute deadline. After timeout the app checks what actually happened. A late result cannot commit a file or continue from unregister to register. A new status can advance setup while a Service Management request is still outstanding. Only the call returning allows another registration change. An open administrator prompt likewise keeps ownership of the request until it closes.
 
 Verification tries the accepted replacement, pending and committed keys in that order. Re-pair This Account stages fresh keys in `keys.json.replacement`. The helper validates the administrator right, caller UID, challenge and new key’s proof. It then atomically replaces only that UID’s pairings if its prior keys still match the signed request. A signed read with the new key completes the local commit. A missing prerequisite stops setup for this launch and displays its specific reason.
 

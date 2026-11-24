@@ -9,27 +9,36 @@ struct SetupView: View {
     @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
-        VStack(spacing: 28) {
+        let message = helper.setup == .starting ? nil : helper.coordinator.status.message
+        let presentation = helper.setup.presentation(
+            continuing: helper.coordinator.willContinueAutomatically,
+            hasMessage: message != nil
+        )
+        VStack(spacing: 24) {
             VStack(spacing: 8) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 96, height: 96)
-                Text("Set Up Nylon").font(.title.weight(.semibold))
-                Text("The nylon app needs a helper to communicate with the nylon daemon, which keeps your networks running even when the app is closed. Connecting to the helper requires administrator rights.")
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 96, height: 96)
+                    .accessibilityHidden(true)
+                Text("Set Up Nylon")
+                    .font(.title.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text("The helper keeps your networks running in the background. macOS will ask you to allow it and approve the connection.")
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .multilineTextAlignment(.center)
 
-            VStack(spacing: 10) {
-                Text(helper.setup.title).font(.headline)
-                if helper.setup.busy || helper.setup == .starting { ProgressView().controlSize(.small) }
-                actions.primaryAction().controlSize(.large)
-                if let message = helper.coordinator.status.message {
-                    Text(message).foregroundStyle(.secondary).textSelection(.enabled)
+            VStack(spacing: 4) {
+                ForEach(SetupStep.all) { step in
+                    stepRow(step, presentation: presentation)
                 }
             }
+
+            setupNotice(presentation, message: message)
         }
-        .multilineTextAlignment(.center)
         .padding(.horizontal, 36)
-        .padding(.top, 12) // the toolbar above holds only the Settings button
+        .padding(.top, 12)
         .padding(.bottom, 32)
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
@@ -40,6 +49,10 @@ struct SetupView: View {
         .toolbarBackground(.hidden, for: .windowToolbar)
         .windowGlass()
         .background(FixedWindow())
+        .onDisappear { helper.coordinator.cancelAutomaticSetup() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await helper.coordinator.refresh() }
+        }
         .onChange(of: helper.setup, initial: true) { _, setup in
             if setup == .ready {
                 openWindow(id: "main")
@@ -48,29 +61,113 @@ struct SetupView: View {
         }
     }
 
-    @ViewBuilder private var actions: some View {
-        switch helper.setup {
-        case .notInstalled:
-            Button("Install") { Task { await helper.coordinator.install() } }
-        case .waitingForLoginItem:
-            Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
-        case .notPaired:
-            Button("Connect…") { Task { await helper.coordinator.connect() } }
-            if helper.coordinator.status.message != nil { RepairPairingButton(helper: helper) }
-        case .outdated:
-            Button("Update Helper") { Task { await helper.coordinator.update() } }
-        case .unreachable:
-            HStack {
-                Button("Try Again") { Task { await helper.coordinator.retry() } }
-                Button("Re-register Helper") { Task { await helper.coordinator.update() } }
+    private func stepRow(_ step: SetupStep, presentation: SetupPresentation) -> some View {
+        let activeStep = presentation.step
+        let current = step == activeStep
+        let completed = helper.setup == .ready || (activeStep.map { step.id < $0.id } ?? false)
+        let symbol = completed ? "checkmark.circle.fill" : "\(step.id).circle" + (current ? ".fill" : "")
+        let stepStatus = completed ? "Completed" : current ? "Current step" : "Pending"
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.title2)
+                    .foregroundStyle(completed ? Color.green : current ? Color.accentColor : Color.secondary)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                Text(step.title)
+                    .fontWeight(current ? .semibold : .regular)
+                    .foregroundStyle(current || completed ? .primary : .secondary)
+                    .accessibilityRepresentation {
+                        Text("Step \(step.id): \(step.title). \(stepStatus).")
+                    }
+                Spacer(minLength: 8)
+                if current {
+                    if let action = presentation.action { primary(action) }
+                    else if showsProgress { progressIndicator }
+                }
             }
-        case .verificationFailed:
-            Button("Try Again") { Task { await helper.coordinator.retry() } }
-            RepairPairingButton(helper: helper)
-        case .blocked:
-            Button("Try Again") { Task { await helper.coordinator.retry() } }
-        default: EmptyView()
+            if current, let hint = presentation.hint {
+                detail(hint).padding(.leading, 34)
+            }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minHeight: 42)
+        .activeStepCard(current)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private func setupNotice(_ presentation: SetupPresentation, message: String?) -> some View {
+        let showStatus = presentation.step == nil && helper.setup != .ready
+        if showStatus || message != nil || presentation.recovery != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                if showStatus {
+                    HStack(spacing: 8) {
+                        if showsProgress { progressIndicator }
+                        Text(presentation.title).fontWeight(.medium)
+                        Spacer(minLength: 8)
+                        if let action = presentation.action { primary(action) }
+                    }
+                    .foregroundStyle(.secondary)
+                }
+                if let message { detail(message).textSelection(.enabled) }
+                switch presentation.recovery {
+                case .approval:
+                    Button("I’ve Allowed Nylon") { Task { await helper.coordinator.repairRegistration() } }
+                        .buttonStyle(.borderless)
+                        .help("If macOS is still waiting for approval, Nylon can refresh the helper registration once.")
+                case .pairing:
+                    RepairPairingButton(helper: helper).buttonStyle(.borderless)
+                case nil: EmptyView()
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func detail(_ text: String) -> some View {
+        Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var showsProgress: Bool {
+        let phase = helper.setup
+        return phase.busy || phase == .starting || (phase == .notPaired && helper.coordinator.willContinueAutomatically)
+    }
+
+    private var progressIndicator: some View {
+        ProgressView().controlSize(.small).accessibilityHidden(true)
+    }
+
+    private func primary(_ action: SetupPresentation.Action) -> some View {
+        Button(action.title) { Task { await action.run(helper.coordinator) } }
+            .primaryAction()
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
+    }
+}
+
+private struct SetupStep: Identifiable, Equatable {
+    let id: Int
+    let title: String
+
+    static let install = Self(id: 1, title: "Register the helper")
+    static let allow = Self(id: 2, title: "Allow it in Login Items")
+    static let connect = Self(id: 3, title: "Connect to the helper")
+    static let all = [install, allow, connect]
+}
+
+private struct SetupPresentation {
+    typealias Action = (title: LocalizedStringKey, run: @MainActor (SetupCoordinator) async -> Void)
+    enum Recovery { case approval, pairing }
+
+    let title: String
+    var step: SetupStep?
+    var action: Action?
+    var hint: String?
+    var recovery: Recovery?
+
+    static func withHint(_ title: String, _ step: SetupStep) -> Self {
+        Self(title: title, step: step, hint: title)
     }
 }
 
@@ -89,24 +186,48 @@ struct RepairPairingButton: View {
 }
 
 extension SetupPhase {
-    var title: String {
+    var title: String { presentation().title }
+
+    fileprivate func presentation(continuing: Bool = false, hasMessage: Bool = false) -> SetupPresentation {
         switch self {
-        case .checking: "Checking setup…"
-        case .stopped(let reason): reason.rawValue
-        case .notInstalled: "Install the helper"
-        case .registering: "Registering the helper…"
-        case .waitingForLoginItem: "Allow the helper in Login Items"
-        case .starting: "Waiting for the helper to respond…"
-        case .unreachable: "The registered helper is still not responding."
-        case .outdated(let version): "Update the helper from version \(version)"
-        case .updating: "Updating the helper registration…"
-        case .notPaired: "Connect to the helper"
-        case .pairing: "Connecting to the helper…"
-        case .verifying: "Verifying the pairing…"
-        case .verificationFailed: "Could not verify the pairing"
-        case .ready: "Connected"
-        case .removing: "Disconnecting the helper…"
-        case .blocked: "Setup needs attention"
+        case .checking: return .init(title: "Checking setup…")
+        case .stopped(let reason): return .init(title: reason.rawValue)
+        case .notInstalled:
+            return .init(title: SetupStep.install.title, step: .install, action: ("Start Setup", { await $0.install() }))
+        case .registering: return .withHint("Registering the helper…", .install)
+        case .registrationPending: return .withHint("Waiting for macOS to finish the helper request…", .install)
+        case .waitingForLoginItem:
+            let hint = continuing
+                ? "Turn on Nylon under Background App Activity. Setup continues after macOS approves the helper."
+                : "Turn on Nylon under Background App Activity, then return here. macOS is still waiting for approval."
+            return .init(title: "Allow Nylon in the Background", step: .allow,
+                         action: ("Open Login Items", { _ in SMAppService.openSystemSettingsLoginItems() }),
+                         hint: hint, recovery: .approval)
+        case .repairingRegistration: return .withHint("Checking the helper’s approval…", .allow)
+        case .starting: return .withHint("Waiting for the helper to respond…", .connect)
+        case .unreachable:
+            return .init(title: "The registered helper is still not responding.", step: .connect,
+                         action: ("Try Again", { await $0.repairRegistration() }),
+                         hint: "macOS approved the helper, but it hasn’t answered. Trying again may restart the helper.")
+        case .restartingHelper: return .withHint("Trying to start the helper again…", .connect)
+        case .outdated(let version):
+            let title = "Update the helper from version \(version)"
+            return .init(title: title, step: .install, action: ("Update Helper", { await $0.update() }), hint: title)
+        case .updating: return .withHint("Updating the helper registration…", .install)
+        case .notPaired:
+            let connect: SetupPresentation.Action = ("Connect…", { await $0.connect() })
+            return .init(title: SetupStep.connect.title, step: .connect, action: continuing ? nil : connect,
+                         hint: continuing ? "Preparing to connect…" : nil,
+                         recovery: hasMessage ? .pairing : nil)
+        case .pairing:
+            return .init(title: "Approve the Connection", step: .connect, hint: "Approve the connection with a Mac administrator account.")
+        case .verifying: return .withHint("Verifying the pairing…", .connect)
+        case .verificationFailed:
+            let title = "Could not verify the pairing"
+            return .init(title: title, step: .connect, action: ("Try Again", { await $0.retry() }), hint: title, recovery: .pairing)
+        case .ready: return .init(title: "Connected")
+        case .removing: return .init(title: "Disconnecting the helper…")
+        case .blocked: return .init(title: "Setup needs attention", action: ("Try Again", { await $0.retry() }))
         }
     }
 }
@@ -119,6 +240,7 @@ private struct FixedWindow: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) {
         DispatchQueue.main.async { // in a window by now
             guard let window = view.window else { return }
+            window.isRestorable = false
             window.styleMask.remove(.resizable)
             window.styleMask.insert(.fullSizeContentView)
             window.titlebarAppearsTransparent = true
@@ -131,6 +253,16 @@ private struct FixedWindow: NSViewRepresentable {
 }
 
 private extension View {
+    @ViewBuilder func activeStepCard(_ active: Bool) -> some View {
+        if !active {
+            self
+        } else if #available(macOS 26, *) {
+            glassEffect(.regular, in: .rect(cornerRadius: 16))
+        } else {
+            background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
     @ViewBuilder func primaryAction() -> some View {
         if #available(macOS 26, *) { buttonStyle(.glassProminent) } else { buttonStyle(.borderedProminent) }
     }

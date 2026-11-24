@@ -19,6 +19,7 @@ import Testing
         return observation
     }
     func registerHelper() throws { try register() }
+    func repairRegistration(_ reason: RegistrationRepairReason) { Issue.record("Unexpected registration repair") }
     func replaceRegistration() async throws { replacements += 1; try await replacement() }
     func enroll(replacing: Bool) async throws {
         if replacing { repairs += 1 }
@@ -47,6 +48,38 @@ import Testing
     await setup.refresh()
     #expect(setup.status.phase == .notInstalled)
     #expect(setup.status.message == "Registration failed")
+}
+
+@Test @MainActor func timedOutInstallInspectionCannotRegisterOrArmPairing() async throws {
+    let effects = SetupFixture()
+    let setup = SetupCoordinator(driver: effects, deadline: .milliseconds(100))
+    await setup.refresh()
+    var registrations = 0
+    effects.register = { registrations += 1 }
+
+    let (inspectionReturned, completion) = AsyncStream<Void>.makeStream()
+    var delayed: CheckedContinuation<SetupObservation, Never>?
+    effects.inspect = {
+        effects.inspect = nil
+        effects.observation = .stable(.waitingForLoginItem)
+        defer { completion.finish() }
+        return await withCheckedContinuation { delayed = $0 }
+    }
+    await setup.install()
+    #expect(setup.status.phase == .waitingForLoginItem)
+    #expect(!setup.willContinueAutomatically)
+
+    let inspection = try #require(delayed)
+    inspection.resume(returning: .stable(.notInstalled))
+    var completionIterator = inspectionReturned.makeAsyncIterator()
+    _ = await completionIterator.next()
+
+    effects.observation = .freshPairingNeeded(version: "1")
+    await setup.refresh()
+    #expect(setup.status.phase == .notPaired)
+    #expect(!setup.willContinueAutomatically)
+    #expect(registrations == 0)
+    #expect(effects.enrollments == 0)
 }
 
 @Test @MainActor func waitsForApprovalAndRetriesSlowHelperWithoutReplacingIt() async {
@@ -95,6 +128,43 @@ import Testing
     #expect(effects.enrollments == 1)
     #expect(effects.verifications == 1)
     effects.enrollment = {}
+}
+
+@Test @MainActor func lostRemovalReplyStillReconcilesObservedRemoval() async {
+    let effects = SetupFixture()
+    effects.observation = .stable(.ready)
+    let setup = SetupCoordinator(driver: effects)
+    var inspections = 0
+    var registrations = 0
+    effects.inspect = {
+        inspections += 1
+        return effects.observation
+    }
+    effects.register = { registrations += 1 }
+    defer { effects.inspect = nil }
+    await setup.refresh()
+
+    let lostReply = Failure("Lost uninstall reply")
+    await #expect(throws: lostReply) {
+        try await setup.remove {
+            #expect(setup.status.phase == .removing)
+            effects.observation = .stable(.notInstalled)
+            await setup.refresh()
+            await setup.retry()
+            await setup.install()
+            await setup.connect(replacing: true)
+            await #expect(throws: Failure.self) {
+                try await setup.remove { Issue.record("An overlapping removal was started") }
+            }
+            #expect(setup.status.phase == .removing)
+            #expect(inspections == 1)
+            throw lostReply
+        }
+    }
+    #expect(setup.status.phase == .notInstalled)
+    #expect(inspections == 2)
+    #expect(registrations == 0)
+    #expect(effects.enrollments == 0)
 }
 
 @Test @MainActor func cancelledAuthorizationReturnsToConnectWithoutPromptingAgain() async {

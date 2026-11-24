@@ -21,7 +21,8 @@ final class HelperClient: ObservableObject, SetupDriver {
     private let fake: FakeHelper? = nil
     #endif
     private var team: String?
-    private var registration: (id: UUID, installing: Bool, initial: SMAppService.Status)?
+    private var changingRegistration = false
+    private var requestingAdminApproval = false
     private var connection: NSXPCConnection?
     private var keys: AppKeys? // last verified by a signed read
     // One Touch ID approval covers the changes the user makes in the next five minutes; changes asked for together
@@ -42,25 +43,66 @@ final class HelperClient: ObservableObject, SetupDriver {
         team = identity
         if let requirement { return .stable(.stopped(requirement)) }
         // A compatible helper registered by another copy is usable too.
-        let greeting: HelperHello
-        do { greeting = try await hello() }
+        let reply: Data
+        do { reply = try await helloReply() }
         catch {
-            switch service.status {
-            case .requiresApproval: return .stable(.waitingForLoginItem)
-            case .enabled: return .unreachable(error.localizedDescription)
-            case .notRegistered: return .stable(.notInstalled)
-            case .notFound: throw Failure("macOS could not find the bundled helper. Open the installed copy of nylon in Applications.")
-            @unknown default: throw Failure("Unknown macOS helper registration status.")
+            try Task.checkCancellation()
+            return try Self.observeRegistration(service.status, xpcError: error, mutationInFlight: changingRegistration) {
+                try Self.validateHelperBundle(at: Bundle.main.bundleURL)
             }
         }
+        try Task.checkCancellation()
+        // Receiving an undecodable reply still proves an endpoint answered. Keep its protocol error.
+        let greeting = try decodeJSON(HelperHello.self, reply)
         guard compatible(greeting) else { return .stable(.outdated(helper: greeting.version), version: greeting.version) }
         let accepted = try acceptedKeys(greeting)
+        if accepted.isEmpty, try !AppKeys.files.hasSavedKeys() { return .freshPairingNeeded(version: greeting.version) }
         let candidates = try AppKeys.files.candidates(accepted: accepted)
         guard !candidates.isEmpty else { return .stable(.notPaired, version: greeting.version) }
         if candidates.contains(where: { $0.file == AppKeys.files.current && $0.keys == keys }) {
             return .stable(.ready, version: greeting.version)
         }
         return .needsVerification(version: greeting.version)
+    }
+
+    // The local registration describes this copy only. A failed lookup does not tell us whether the
+    // bundled files are missing, and we only get here if a signed hello could not establish a connection.
+    nonisolated static func observeRegistration(
+        _ status: SMAppService.Status, xpcError: Error, mutationInFlight: Bool = false, validateBundle: () throws -> Void
+    ) throws -> SetupObservation {
+        switch status {
+        case .requiresApproval:
+            // The service is registered. launchd normally won't load it until macOS grants approval.
+            return .stable(.waitingForLoginItem)
+        case .enabled: return .unreachable(xpcError.localizedDescription)
+        case .notRegistered, .notFound:
+            if mutationInFlight { return .stable(.registrationPending) }
+            // A valid bundle can offer registration when macOS has no usable record for this copy.
+            try validateBundle()
+            return .stable(.notInstalled)
+        @unknown default:
+            throw Failure("Unknown macOS helper registration status (\(status.rawValue)).")
+        }
+    }
+
+    nonisolated static func validateHelperBundle(at bundleURL: URL) throws {
+        let plistURL = bundleURL.appendingPathComponent("Contents/Library/LaunchDaemons/\(Helper.plistName)")
+        let contents: Data
+        do { contents = try Data(contentsOf: plistURL) }
+        catch { throw Failure("Can't read the bundled helper configuration at \(plistURL.path): \(error.localizedDescription)") }
+        let program = "Contents/MacOS/nylon-helper"
+        guard let plist = try? PropertyListSerialization.propertyList(from: contents, format: nil) as? [String: Any],
+              plist["Label"] as? String == Helper.machService,
+              plist["BundleProgram"] as? String == program,
+              (plist["MachServices"] as? [String: Bool])?[Helper.machService] == true else {
+            throw Failure("The bundled helper configuration at \(plistURL.path) is invalid.")
+        }
+        let executable = bundleURL.appendingPathComponent(program)
+        let attributes = try? FileManager.default.attributesOfItem(atPath: executable.path)
+        guard attributes?[.type] as? FileAttributeType == .typeRegular,
+              FileManager.default.isExecutableFile(atPath: executable.path) else {
+            throw Failure("The bundled helper at \(executable.path) is missing or isn't executable.")
+        }
     }
 
     nonisolated private static func accountIsAdmin() throws -> Bool {
@@ -82,42 +124,74 @@ final class HelperClient: ObservableObject, SetupDriver {
         return greeting.paired
     }
 
-    // A timeout stops waiting. macOS may still finish its request. Block another mutation until its callback or a confirmed status change establishes the outcome.
+    // A status change can advance setup, but only the OS call returning releases the mutation.
     private func changeRegistration(installing: Bool) async throws {
         try Task.checkCancellation()
-        if let pending = registration {
-            let state = service.status
-            let applied = pending.installing ? (state == .enabled || state == .requiresApproval) : state == .notRegistered
-            if applied && state != pending.initial {
-                registration = nil
-                if installing == pending.installing { return }
-            } else {
-                throw Failure("macOS is still processing the previous helper registration request. Check again after it finishes.")
-            }
-        }
-        let id = UUID(), initial = service.status
-        registration = (id, installing, initial)
-        defer { if registration?.id == id { registration = nil } }
+        try requireNoRegistrationMutation()
+        changingRegistration = true
+        defer { changingRegistration = false }
         try await Task.detached { [service] in
             if installing { try service.register() } else { try await service.unregister() }
         }.value
         try Task.checkCancellation()
     }
 
+    private func requireNoRegistrationMutation() throws {
+        guard !changingRegistration else {
+            throw Failure("macOS is still processing the previous helper registration request. Check again after it finishes.")
+        }
+    }
+
     func registerHelper() async throws {
+        switch service.status {
+        case .enabled:
+            break
+        case .requiresApproval:
+            SMAppService.openSystemSettingsLoginItems()
+        case .notRegistered, .notFound:
+            try Self.validateHelperBundle(at: Bundle.main.bundleURL)
+            try await submitRegistration()
+        @unknown default:
+            throw Failure("Unknown macOS helper registration status (\(service.status.rawValue)).")
+        }
+    }
+
+    private func submitRegistration() async throws {
         do { try await changeRegistration(installing: true) }
         catch {
             try Task.checkCancellation()
             if error is Failure { throw error }
-            switch service.status {
-            case .enabled, .requiresApproval: break
-            default: throw error
-            }
+            let status = service.status
+            guard status == .enabled || status == .requiresApproval else { throw error }
         }
         if service.status == .requiresApproval { SMAppService.openSystemSettingsLoginItems() }
     }
 
-    // Only an explicit repair/update can remove a registration. Recheck in case the helper just finished starting.
+    // The coordinator has just checked XPC. Recheck the status at the point of mutation.
+    func repairRegistration(_ reason: RegistrationRepairReason) async throws {
+        let expected: SMAppService.Status = reason == .approval ? .requiresApproval : .enabled
+        guard service.status == expected else { return }
+        try Self.validateHelperBundle(at: Bundle.main.bundleURL)
+        guard service.status == expected else { return }
+
+        if reason == .startup {
+            // A previous bootstrap may have failed before approval caught up. Try submitting the same job first.
+            do {
+                try await changeRegistration(installing: true)
+                return
+            } catch where Self.matchesServiceError(error, code: Int(kSMErrorAlreadyRegistered)) {}
+            if (try? await helloReply()) != nil { return }
+            try Task.checkCancellation()
+            guard service.status == expected else { return }
+        }
+
+        try await unregisterForReplacement()
+        keys = nil // Verify the saved pairing again after connecting to the restarted helper.
+        // The approval status can lag the completed unregistration.
+        try await submitRegistration()
+    }
+
+    // An explicit update replaces a known incompatible helper. Approval can change during the recheck.
     func replaceRegistration() async throws {
         if let greeting = try? await hello(), compatible(greeting) { return }
         try Task.checkCancellation()
@@ -125,11 +199,30 @@ final class HelperClient: ObservableObject, SetupDriver {
             SMAppService.openSystemSettingsLoginItems()
             return
         }
+        // Validate the replacement before taking a working or recoverable registration down.
+        try Self.validateHelperBundle(at: Bundle.main.bundleURL)
+        try await unregisterForReplacement()
+        // The unregister call can finish before the status lookup catches up.
+        try await submitRegistration()
+    }
+
+    private func unregisterForReplacement() async throws {
         do { try await changeRegistration(installing: false) }
-        catch where !(error is Failure) && service.status == .notRegistered {} // another copy may own the old registration
+        catch where Self.canRegisterAfterUnregisterFailure(error, status: service.status) {}
         try Task.checkCancellation()
         disconnect()
-        try await registerHelper()
+    }
+
+    nonisolated static func canRegisterAfterUnregisterFailure(_ error: Error, status: SMAppService.Status) -> Bool {
+        guard !(error is Failure), !(error is CancellationError) else { return false }
+        return status == .notRegistered || matchesServiceError(error, code: Int(kSMErrorJobNotFound))
+    }
+
+    nonisolated private static func matchesServiceError(_ error: Error, code: Int) -> Bool {
+        // Older systems return the same NSError domain without exporting its constant.
+        let domain = if #available(macOS 15, *) { SMAppServiceErrorDomain } else { "SMAppServiceErrorDomain" }
+        let failure = error as NSError
+        return failure.domain == domain && failure.code == code
     }
 
     func unpair() async throws {
@@ -148,38 +241,43 @@ final class HelperClient: ObservableObject, SetupDriver {
     }
 
     private func removeHelper() async throws {
-        let admin = try await Task.detached { try AdminApproval("Nylon wants to uninstall its helper. This stops every network on this Mac.") }.value
+        try requireNoRegistrationMutation()
+        let admin = try await administratorApproval("Nylon wants to uninstall its helper. This stops every network on this Mac.")
         let authorization = admin.externalForm
-        let cleanup: Error?
-        let rejection: String?
-        do {
-            let reply = try await call { $0.uninstall(authorization: authorization, reply: $1) }
-            rejection = reply
-            cleanup = nil
-        } catch {
-            rejection = nil
-            cleanup = error
-        }
+        let cleanup: Result<String?, Error>
+        do { cleanup = .success(try await call { $0.uninstall(authorization: authorization, reply: $1) }) }
+        catch { cleanup = .failure(error) }
         withExtendedLifetime(admin) {} // the helper checks it against the live authorization
-        if let rejection { throw Failure(rejection) }
+        if case .success(let rejection?) = cleanup { throw Failure(rejection) }
         try Task.checkCancellation()
         do { try await changeRegistration(installing: false) }
         catch where !(error is Failure) && service.status == .notRegistered {}
         try Task.checkCancellation()
         disconnect()
         keys = nil
-        if let cleanup {
-            throw Failure("The helper is uninstalled, but it couldn't stop its networks first (\(cleanup)). Restart this Mac to stop them.")
+        if case .failure(let error) = cleanup {
+            throw Failure("The helper is uninstalled, but it couldn't stop its networks first (\(error)). Restart this Mac to stop them.")
         }
     }
 
     func enroll(replacing: Bool) async throws {
+        try await enroll(replacing: replacing, onlyIfFresh: false)
+    }
+
+    func enrollFresh() async throws {
+        try await enroll(replacing: false, onlyIfFresh: true)
+    }
+
+    private func enroll(replacing: Bool, onlyIfFresh: Bool) async throws {
         guard try Self.accountIsAdmin() else { throw Failure(SetupRequirement.adminAccount.rawValue) }
         let files = AppKeys.files
         let lock = try files.lock()
         defer { withExtendedLifetime(lock) {} }
         let accepted = try await acceptedKeys(hello())
         try Task.checkCancellation()
+        if onlyIfFresh {
+            guard accepted.isEmpty, try !files.hasSavedKeys() else { return }
+        }
         if !replacing, try !files.candidates(accepted: accepted).isEmpty { return }
 
         let create: () async throws -> AppKeys = {
@@ -200,9 +298,7 @@ final class HelperClient: ObservableObject, SetupDriver {
         if replacing { try files.stageReplacement(candidate, accepted: accepted) }
         let keysData = replacing ? try encodeJSON(AccountRepair(keys: candidate.publicKeys, expected: accepted)) : try encodeJSON(candidate.publicKeys)
         let prompt = replacing ? "Nylon wants to replace the helper pairing for this macOS account." : "Nylon wants to connect to its helper."
-        let admin = try await SetupDeadline<AdminApproval>().run(for: .seconds(120)) {
-            try await Task.detached { try AdminApproval(prompt) }.value
-        }
+        let admin = try await administratorApproval(prompt)
         defer { withExtendedLifetime(admin) {} }
         try Task.checkCancellation()
         let challenge = try await challenge()
@@ -219,6 +315,18 @@ final class HelperClient: ObservableObject, SetupDriver {
             throw error
         }
         if let rejection { throw Failure(rejection) }
+    }
+
+    private func administratorApproval(_ prompt: String) async throws -> AdminApproval {
+        try Task.checkCancellation()
+        guard !requestingAdminApproval else {
+            throw Failure("Finish the open macOS administrator prompt before trying again.")
+        }
+        requestingAdminApproval = true
+        defer { requestingAdminApproval = false }
+        let approval = try await Task.detached { try AdminApproval(prompt) }.value
+        try Task.checkCancellation()
+        return approval
     }
 
     // Re-read both sides under the same lock used by every app copy that enrolls. A lost RPC reply or an
@@ -284,7 +392,11 @@ final class HelperClient: ObservableObject, SetupDriver {
 
     // short: it's how the app finds out whether the helper is there at all, every few seconds
     private func hello() async throws -> HelperHello {
-        try await decodeJSON(HelperHello.self, call(timeout: 3) { $0.hello(reply: $1) })
+        try await decodeJSON(HelperHello.self, helloReply())
+    }
+
+    private func helloReply() async throws -> Data {
+        try await call(timeout: 3) { $0.hello(reply: $1) }
     }
 
     // Calls the helper, failing if the connection breaks or it doesn't answer in time. Without a limit, a helper launchd
