@@ -3,14 +3,19 @@ import Foundation
 import Security
 
 // The Team ID this process is signed with; nil when it's signed ad hoc.
-func ownTeamID() -> String? {
+func ownTeamID() -> String? { try? signingTeamID() }
+
+func signingTeamID() throws -> String? {
     var code: SecCode?
-    guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
+    let ownStatus = SecCodeCopySelf([], &code)
+    guard ownStatus == errSecSuccess, let code else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(ownStatus)) }
     var staticCode: SecStaticCode?
-    guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode else { return nil }
+    let staticStatus = SecCodeCopyStaticCode(code, [], &staticCode)
+    guard staticStatus == errSecSuccess, let staticCode else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(staticStatus)) }
     var info: CFDictionary?
-    guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info) == errSecSuccess,
-          let info = info as? [String: Any] else { return nil }
+    let status = SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &info)
+    if status == errSecCSUnsigned { return nil }
+    guard status == errSecSuccess, let info = info as? [String: Any] else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
     return info[kSecCodeInfoTeamIdentifier as String] as? String
 }
 
@@ -40,8 +45,11 @@ func isSigned(_ url: URL, identifier: String, team: String) -> Bool {
 }
 
 // Whether the macOS user uid is an administrator: a member of the admin group, directly or through another group.
-func isAdministrator(_ uid: uid_t) -> Bool {
+func isAdministrator(_ uid: uid_t) -> Bool { administratorMembership(uid) == true }
+
+// A directory lookup failure is retryable during setup. The helper still denies access on lookup failure.
+func administratorMembership(_ uid: uid_t) -> Bool? {
     guard let user = CBUserIdentity(posixUID: uid, authority: .default()),
-          let admin = CBGroupIdentity(posixGID: 80, authority: .default()) else { return false } // 80: admin
+          let admin = CBGroupIdentity(posixGID: 80, authority: .default()) else { return nil } // 80: admin
     return user.isMember(ofGroup: admin)
 }

@@ -31,8 +31,14 @@ final class NodeStore: ObservableObject {
     @Published var selection: String? // the network the main window shows
     @Published var addingNetwork = false // the main window's Add Network sheet, which the menu can open too
     private let notifier = Notifier()
+    private let launchInspection: Task<SetupPhase, Never>
+    private var didUpdate = false
 
     init() {
+        launchInspection = Task { [helper] in
+            await helper.refresh()
+            return helper.setup
+        }
         Task {
             while true {
                 await update()
@@ -40,6 +46,8 @@ final class NodeStore: ObservableObject {
             }
         }
     }
+
+    func setupAtLaunch() async -> SetupPhase { await launchInspection.value }
 
     var networks: [HelperState.Network] { state?.networks ?? [] }
     var running: Bool { networks.contains { $0.isUp } }
@@ -70,7 +78,13 @@ final class NodeStore: ObservableObject {
     }
 
     private func updateOnce() async {
-        await helper.refresh()
+        if didUpdate {
+            await helper.refresh()
+        } else {
+            // The launch window and the first network refresh use the same helper check.
+            _ = await launchInspection.value
+            didUpdate = true
+        }
         guard helper.setup == .ready else {
             if state != nil { state = nil }
             if icon.running { icon.running = false }

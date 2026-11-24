@@ -32,10 +32,80 @@ This is meant to hold even if the team's signing certificate leaks: a program si
 
 ## Installing and removing the helper
 
+The app reconstructs setup from Service Management, a code-signing-checked helper connection and the user's saved keys. The diagram uses the names of the cases in `SetupPhase`. Inspection is the decision point that selects the next phase.
+
+```mermaid
+stateDiagram-v2
+    [*] --> checking
+    checking --> Inspect
+    Inspect --> stopped: Missing signing, administrator account, or Secure Enclave
+    Inspect --> blocked: Inspection error
+    Inspect --> notInstalled: No usable registration and bundle is valid
+    Inspect --> registrationPending: No usable registration while a system request is in flight
+    Inspect --> waitingForLoginItem: Approval required and no XPC reply
+    Inspect --> starting: Enabled and within the startup grace period
+    Inspect --> unreachable: Three consecutive missed XPC replies
+    Inspect --> outdated: Helper version or protocol differs
+    Inspect --> notPaired: No matching pairing
+    Inspect --> verifying: Accepted key needs a signed read
+    Inspect --> ready: Verified pairing still accepted
+
+    notInstalled --> registering: Start Setup
+    registering --> Inspect: Reconcile registration result
+    registrationPending --> Inspect: Poll
+    waitingForLoginItem --> Inspect: Poll or return from System Settings
+    waitingForLoginItem --> repairingRegistration: I've Allowed Nylon
+    repairingRegistration --> Inspect: Reconcile repair result
+    starting --> Inspect: Poll
+    unreachable --> Inspect: Poll
+    unreachable --> restartingHelper: Try Again
+    restartingHelper --> Inspect: Reconcile startup retry
+    outdated --> updating: Update Helper
+    updating --> Inspect: Reconcile update result
+
+    notPaired --> pairing: Connect, one-time continuation, or confirmed re-pair
+    ready --> pairing: Confirmed re-pair in Settings
+    verificationFailed --> pairing: Confirmed re-pair
+    pairing --> Inspect: Reconcile pairing result
+    verifying --> ready: Signed read succeeds and keys are committed
+    verifying --> verificationFailed: No verified key or commit failed
+    verificationFailed --> Inspect: Poll or Try Again
+    blocked --> Inspect: Poll or Try Again
+    ready --> Inspect: Poll
+    ready --> removing: Disconnect or Uninstall
+    removing --> Inspect: Reconcile removal result
+    note right of removing
+        Uninstall is also available in
+        eligible non-ready phases.
+    end note
+```
+
+The launch window decision and the first network refresh share one helper check. The app opens Setup once when the launch check reports a non-ready phase that still needs attention. An open Setup window gives way to the main window when the pairing reaches Ready.
+
+The setup state keeps the visible step, retry counts and first-launch pairing intent together. The coordinator runs one mutation at a time and reconciles with a fresh observation after success, failure or timeout. It rechecks a registration action before it runs and discards observations from older polls. A reply on a code-signing-checked XPC connection takes precedence over the registration status for this app copy. When XPC fails and Service Management reports `.notRegistered` or `.notFound`, the app waits for any registration request still in flight. With no request in flight, it validates the bundled launch daemon plist and executable before offering Start Setup. A transient registration error gets one automatic retry if the app still needs to register.
+
+A ready session keeps its status through two consecutive missed XPC replies. On the third miss, setup offers a startup retry and continues polling. A failed startup retry with no XPC reply can return directly to `unreachable`. Pairing verification also gets up to three automatic attempts while the pairing remains unverified. Try Again resets the retry counts.
+
+Start Setup authorizes the app to continue to the administrator prompt once after Login Items approval and a compatible XPC handshake. Before prompting automatically, it checks under the per-user lock for both local pairing keys and keys the helper has accepted for this macOS account. Closing the setup window, restarting, or reaching an error that needs attention clears the pending intent. Existing or resumed installations can still proceed with Connect.
+
+Returning from System Settings re-reads the current system and helper state. Service Management can report a registered helper waiting for approval while no job is loaded in launchd. If the user chooses **I’ve Allowed Nylon**, the app checks again. If the helper still needs approval and XPC fails, the app waits for unregistration and attempts registration once. The pairing files stay in place. The resulting system status and XPC reply determine where setup resumes.
+
+Service Management reports this bundle’s registration and approval. Its enabled status makes the daemon eligible to run. A code-signing-checked XPC hello proves the helper can answer, and a signed state request establishes that the saved pairing works. For on-machine diagnosis, `launchctl print system/com.encodeous.nylon.helper` reports the job loaded in the system domain, including its state and last exit status. The label’s value in `launchctl print-disabled system` only reports its enable override. The app uses the Service Management and XPC APIs because the `launchctl print` format is intended for interactive diagnosis and is not a stable API.
+
+If the approved helper does not answer after three probes, **Try Again** rechecks the live state and asks Service Management to start it. If registration reports that the helper is already registered, the app rechecks XPC and approval before replacing the registration once. This preserves the pairing files and network configuration.
+
+Pairing stages the device-bound keys in `keys.json.pending` before requesting administrator approval. A per-user file lock serializes setup across app copies. After a timeout or restart, a matching pending public key resumes verification. A successful signed read allows the atomic rename to `keys.json`. An unaccepted pending key can be reused on the next Connect. Cancellation returns to the Connect step and waits for the user.
+
+Each setup operation and its follow-up inspection have a two-minute deadline. After timeout the app checks what actually happened. A late result cannot commit a file or continue from unregister to register. A new status can advance setup while a Service Management request is still outstanding. Only the call returning allows another registration change. An open administrator prompt likewise keeps ownership of the request until it closes.
+
+Verification tries the accepted replacement, pending and committed keys in that order. Re-pair This Account stages fresh keys in `keys.json.replacement`. The helper validates the administrator right, caller UID, challenge and new key’s proof. It then atomically replaces only that UID’s pairings if its prior keys still match the signed request. A signed read with the new key completes the local commit. A missing prerequisite stops setup for this launch and displays its specific reason.
+
+The helper writes its startup diagnostics to `/Library/Logs/nylon-helper.log`. Its parent directory exists before the first network starts.
+
 - **Install:** the app registers the helper with `SMAppService`, the user allows it under Login Items, then pairs the app with an administrator's approval.
 - **Unpair:** removes this app's pairing. The helper keeps running, for anyone else paired.
-- **Uninstall:** needs an administrator, not a pairing, so any user can remove a helper someone else set up. The helper stops every network and removes every pairing, the installed nylon and its `/usr/local/bin/nylon` link, then exits, and the app unregisters it. Each network's config (its private key and `central.yaml`) and the logs stay, so installing again finds the networks; only pairing starts over. If the helper doesn't answer, the app unregisters it anyway and says the cleanup didn't happen.
-- **App deleted:** the helper checks every minute that its app is still there. Gone two checks in a row (an update replaces the app for a moment), it stops its networks, removes the installed nylon and the `nylon` link, and exits; launchd can't start a helper whose binary is gone. Moving the app looks the same, so after moving it, open it to set the helper up again.
+- **Uninstall** requires an administrator and works even when the local pairing is broken. The helper stops every network and removes its pairings, the installed nylon and its `/usr/local/bin/nylon` link. The app unregisters the helper after its reply. The helper also schedules its own exit in case unregistration fails. Network configuration and logs remain available on reinstall. If the helper doesn't answer, the app still attempts unregistration and reports that it couldn't confirm cleanup.
+- **App deleted.** The helper checks its original executable path every minute. If two consecutive checks miss it, the helper stops its networks, cleans up the installed nylon and its link, and exits. Deleting the bundle can leave the launchd job registered after the process exits. Reopening a moved app runs the normal inspection.
 - **Helper crashed:** nylon runs in its own process group, so it outlives a helper that crashes or is killed. At launch the helper asks each of its networks' sockets which process serves it, and adopts the ones running its installed nylon. Stopping signals every network at once, then waits, inside launchd's 30 second `ExitTimeOut`.
 - **Old helper:** if the helper's version isn't the app's, the app offers to update it, which unregisters and registers it again so launchd runs the new one.
 
@@ -67,7 +137,7 @@ The app follows a network's log through the helper (`log(network:from:)`, read k
 
 `Shared/HelperProtocol.swift`. Five calls, all JSON:
 
-- `hello` → version, and every pairing's read key (so an app can tell whether it's paired, and whether anyone is).
+- `hello` → version, the caller's paired read public keys, and flags for account repair support and pairing database readability.
 - `challenge` → a fresh challenge for one `pair` or `perform` on this connection.
 - `pair(keys, challenge, proof, authorization)` → an error, or none; needs an administrator.
 - `uninstall(authorization)` → stops every network and removes every pairing, keeping the networks' config; needs an administrator, no pairing.

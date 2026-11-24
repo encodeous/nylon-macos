@@ -5,7 +5,9 @@ import SwiftUI
 struct MenuApp: App {
     // Not observed here: the app's body includes the menu bar icon, and redrawing that is slow (macOS redraws a copy
     // for every display), so it mustn't redraw on every status update. The icon watches store.icon instead.
-    @State private var store = NodeStore()
+    @NSApplicationDelegateAdaptor(LaunchSetup.self) private var launchSetup
+    @Environment(\.openWindow) private var openWindow
+    private var store: NodeStore { launchSetup.store }
     private static let runningIcon = menuBarIcon("MenuBarRunning")
     private static let stoppedIcon = menuBarIcon("MenuBarStopped")
 
@@ -35,15 +37,18 @@ struct MenuApp: App {
         MenuBarExtra {
             MenuContent(store: store)
         } label: {
-            MenuBarIcon(icon: store.icon, store: store, running: Self.runningIcon, stopped: Self.stoppedIcon)
+            MenuBarIcon(icon: store.icon, running: Self.runningIcon, stopped: Self.stoppedIcon)
         }
         .menuBarExtraStyle(.window)
+        .onChange(of: ObjectIdentifier(store), initial: true) {
+            launchSetup.bind(openWindow)
+        }
         Window("Nylon", id: "main") {
             MainWindow(store: store)
         }
         .defaultSize(width: 1080, height: 720)
         Window("Set Up Nylon", id: "setup") {
-            SetupView(store: store, helper: store.helper)
+            SetupView(helper: store.helper)
         }
         .windowResizability(.contentSize)
         WindowGroup("Edit Config", id: "editor", for: ConfigFile.self) { $file in
@@ -58,6 +63,35 @@ struct MenuApp: App {
             CommandGroup(replacing: .appTermination) {
                 Button("Close Window") { openWindows().forEach { $0.performClose(nil) } }.keyboardShortcut("q")
             }
+        }
+    }
+}
+
+@MainActor private final class LaunchSetup: NSObject, NSApplicationDelegate {
+    let store = NodeStore()
+    private var openWindow: OpenWindowAction?
+    private var didFinishLaunching = false
+    private var didCheckSetup = false
+
+    func bind(_ action: OpenWindowAction) {
+        guard !didCheckSetup else { return }
+        openWindow = action
+        checkSetup()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        didFinishLaunching = true
+        checkSetup()
+    }
+
+    private func checkSetup() {
+        // AppKit launch and SwiftUI scene installation can finish in either order.
+        guard didFinishLaunching, !didCheckSetup, let openWindow else { return }
+        didCheckSetup = true
+        self.openWindow = nil
+        Task {
+            guard await store.setupAtLaunch() != .ready, store.helper.setup != .ready else { return }
+            showWindow { openWindow(id: "setup") }
         }
     }
 }
@@ -79,22 +113,14 @@ func menuBarIcon(_ name: String) -> NSImage {
     return image
 }
 
-// The status item's icon. On launch, if the helper isn't set up, it opens the main window, which walks through setup,
-// so a new user isn't left guessing.
 struct MenuBarIcon: View {
     @ObservedObject var icon: NodeStore.Icon
-    let store: NodeStore
     let running: NSImage
     let stopped: NSImage
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Image(nsImage: icon.running ? running : stopped)
             .accessibilityLabel("Nylon")
-            .task {
-                await store.update()
-                if store.helper.setup != .ready { showWindow { openWindow(id: "setup") } }
-            }
     }
 }
 
